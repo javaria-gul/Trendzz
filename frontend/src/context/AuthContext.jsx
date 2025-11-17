@@ -1,4 +1,5 @@
 import React, { createContext, useState, useEffect } from "react";
+import { updateProfile } from "../services/auth";
 
 export const AuthContext = createContext();
 
@@ -25,13 +26,23 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    // Clear all storage
     localStorage.removeItem("trendzz_token");
     localStorage.removeItem("trendzz_user");
-    setUserToken(null);
-    setIsAuthenticated(false);
-    setUserData(null);
-    // ✅ REMOVED: navigate from here - we'll handle navigation in components
-    window.location.href = '/login'; // Simple redirect
+    sessionStorage.clear();
+
+    // Clear browser cache
+    if (window.caches) {
+      caches.keys().then(names => {
+        names.forEach(name => caches.delete(name));
+      });
+    }
+
+    // Redirect to login
+    window.location.href = '/login';
+
+    // Prevent back navigation
+    window.history.pushState(null, '', '/login');
   };
 
   // Function to update user data after onboarding
@@ -42,18 +53,35 @@ export const AuthProvider = ({ children }) => {
     return updated;
   };
 
-  // Function to mark onboarding as complete
-  const completeOnboarding = (userData) => {
-    const updatedUser = updateUserData(userData);
-    return updatedUser;
-  };
+  // UPDATE completeOnboarding function
+const completeOnboarding = async (userData) => {
+  try {
+    // Send data to backend
+    const response = await updateProfile(userData);
+    
+    if (response.data.success) {
+      const updatedUser = response.data.user;
+      
+      // Update local storage and state
+      localStorage.setItem("trendzz_user", JSON.stringify(updatedUser));
+      setUserData(updatedUser);
+      
+      return updatedUser;
+    } else {
+      throw new Error(response.data.message);
+    }
+  } catch (error) {
+    console.error('Error in completeOnboarding:', error);
+    throw error;
+  }
+};
 
   return (
-    <AuthContext.Provider value={{ 
-      userToken, 
-      isAuthenticated, 
+    <AuthContext.Provider value={{
+      userToken,
+      isAuthenticated,
       userData,
-      login, 
+      login,
       logout,
       updateUserData,
       completeOnboarding
@@ -62,3 +90,5 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
+
+
