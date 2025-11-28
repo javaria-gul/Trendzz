@@ -57,7 +57,7 @@ router.post(
 );
 
 /**
- * ✅ NEW: UPDATE USER PROFILE (ONBOARDING COMPLETION)
+ * UPDATE USER PROFILE (ONBOARDING COMPLETION)
  */
 router.put("/profile", requireAuth, 
   [
@@ -86,8 +86,17 @@ router.put("/profile", requireAuth,
 );
 
 /**
- * ✅ NEW: GET USER PROFILE
+ * GET USER PROFILE
  */
 router.get("/profile", requireAuth, getUserProfile);
+
+// Temporary debug route
+router.get("/debug/test", requireAuth, (req, res) => {
+  res.json({
+    success: true,
+    message: "Backend is working",
+    user: req.user
+  });
+});
 
 export default router;

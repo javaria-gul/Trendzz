@@ -181,6 +181,40 @@ router.get("/profile/:userId", requireAuth, async (req, res) => {
   }
 });
 
+
+// DEBUG: Test profile update
+router.put("/test-update", requireAuth, async (req, res) => {
+  try {
+    console.log("🔵 TEST - Request body:", req.body);
+    console.log("🔵 TEST - User ID:", req.user.id);
+    
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        name: req.body.name,
+        username: req.body.username,
+        bio: req.body.bio,
+        role: req.body.role,
+        semester: req.body.semester,
+        batch: req.body.batch
+      },
+      { new: true }
+    );
+
+    console.log("✅ TEST - Updated user:", updatedUser);
+
+    res.json({
+      success: true,
+      message: "Test update successful",
+      user: updatedUser
+    });
+
+  } catch (error) {
+    console.error("❌ TEST - Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Follow/Unfollow user
 router.post("/follow/:userId", requireAuth, async (req, res) => {
   try {

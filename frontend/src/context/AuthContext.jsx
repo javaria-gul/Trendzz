@@ -46,12 +46,15 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Function to update user data after onboarding
-  const updateUserData = (newData) => {
-    const updated = { ...userData, ...newData, firstLogin: false };
-    localStorage.setItem("trendzz_user", JSON.stringify(updated));
-    setUserData(updated);
-    return updated;
-  };
+ const updateUserData = (newData) => {
+  console.log('🔄 AuthContext: updateUserData called with:', newData);
+  
+  setUserData(prevData => {
+    const updatedData = { ...prevData, ...newData };
+    console.log('🔄 AuthContext: Updated user data:', updatedData);
+    return updatedData;
+  });
+};
 
   // UPDATE completeOnboarding function
 const completeOnboarding = async (userData) => {

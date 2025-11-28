@@ -1,7 +1,6 @@
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-
 export const registerUser = async (req, res) => {
   const { name, email, password } = req.body;
 
@@ -60,16 +59,23 @@ export const updateUserProfile = async (req, res) => {
       semester, 
       batch, 
       subjects,
-      following // ✅ REAL User IDs array
+      following,
+      name,        // ✅ ADD THIS - name field
+      bio,         // ✅ ADD THIS - bio field
+      coverImage   // ✅ ADD THIS - coverImage field
     } = req.body;
 
     const userId = req.user.id;
 
-    console.log("Updating user profile:", { 
+    console.log("🟢 UPDATING ALL FIELDS:", { 
       userId, 
+      name,        // ✅ LOG NAME
       username, 
+      bio,         // ✅ LOG BIO
       role, 
-      followingCount: following?.length 
+      semester,
+      batch,
+      coverImage   // ✅ LOG COVER IMAGE
     });
 
     // ✅ Validate that followed users exist
@@ -89,17 +95,20 @@ export const updateUserProfile = async (req, res) => {
       }
     }
 
-    // Find user and update
+    // ✅ Find user and update - ALL FIELDS INCLUDED
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       {
+        name,        // ✅ ADD THIS
         username,
+        bio,         // ✅ ADD THIS  
         avatar,
+        coverImage,  // ✅ ADD THIS
         role,
         semester, 
         batch,
         subjects,
-        following: following || [], // ✅ REAL ObjectIds
+        following: following || [],
         firstLogin: false
       },
       { new: true, runValidators: true }
@@ -111,6 +120,13 @@ export const updateUserProfile = async (req, res) => {
         message: "User not found" 
       });
     }
+
+    console.log("✅ USER UPDATED SUCCESSFULLY:", {
+      name: updatedUser.name,
+      username: updatedUser.username,
+      bio: updatedUser.bio,
+      role: updatedUser.role
+    });
 
     // ✅ Update followers count for followed users
     if (following && following.length > 0) {
@@ -127,7 +143,7 @@ export const updateUserProfile = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Update profile error:", error);
+    console.error("❌ Update profile error:", error);
     
     if (error.code === 11000 && error.keyPattern.username) {
       return res.status(400).json({ 
@@ -166,6 +182,48 @@ export const getUserProfile = async (req, res) => {
     res.status(500).json({ 
       success: false,
       message: "Server error" 
+    });
+  }
+};
+
+
+// Debug endpoint to check all users
+export const debugAllUsers = async (req, res) => {
+  try {
+    const users = await User.find({})
+      .select('name username email role semester batch firstLogin avatar bio')
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      count: users.length,
+      users: users
+    });
+  } catch (error) {
+    console.error("Debug users error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch users"
+    });
+  }
+};
+
+// Add to userController.js
+export const debugProfileCheck = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id)
+      .select('name username email role semester batch firstLogin avatar bio following followers');
+    
+    res.json({
+      success: true,
+      user: user,
+      message: `Onboarding completed: ${!user.firstLogin}`
+    });
+  } catch (error) {
+    console.error("Debug profile error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Debug failed"
     });
   }
 };

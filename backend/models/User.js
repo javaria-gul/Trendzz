@@ -7,7 +7,8 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   firstLogin: { type: Boolean, default: true },
   username: { type: String, unique: true, sparse: true },
-  avatar: { type: String, default: "" },
+  avatar: { type: String, default: "/avatars/avatar1.png" },
+  bio: { type: String, default: "" }, // ✅ ADD THIS
 
   role: { type: String, enum: ["student", "faculty"], default: null },
   semester: { type: String, default: null },
