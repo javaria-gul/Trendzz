@@ -7,23 +7,24 @@ import API from '../services/api';
 const Profile = () => {
   const { userData, updateUserData } = useContext(AuthContext);
   const [isEditing, setIsEditing] = useState(false);
- const [editForm, setEditForm] = useState({
-  name: userData?.name || '',
-  bio: userData?.bio || '',
-  username: userData?.username || '',
-  semester: userData?.semester || '',
-  batch: userData?.batch || '',
-  subjects: userData?.subjects || [],
-  avatar: userData?.avatar || '/avatars/avatar1.png',
-  coverImage: userData?.coverImage || '',
-  avatarFile: null, // Add this
-  coverFile: null   // Add this
-});
+  const [editForm, setEditForm] = useState({
+    name: userData?.name || '',
+    bio: userData?.bio || '',
+    username: userData?.username || '',
+    semester: userData?.semester || '',
+    batch: userData?.batch || '',
+    subjects: userData?.subjects || [],
+    avatar: userData?.avatar || '/avatars/avatar1.png',
+    coverImage: userData?.coverImage || '',
+    avatarFile: null,
+    coverFile: null
+  });
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [isUsernameAvailable, setIsUsernameAvailable] = useState(null);
   const [usernameChangeTime, setUsernameChangeTime] = useState(userData?.lastUsernameChange || null);
   const [tempAvatar, setTempAvatar] = useState(null);
   const [tempCover, setTempCover] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   
   const fileInputRef = useRef(null);
   const coverInputRef = useRef(null);
@@ -40,10 +41,37 @@ const Profile = () => {
         batch: userData.batch || '',
         subjects: userData.subjects || [],
         avatar: userData.avatar || '/avatars/avatar1.png',
-        coverImage: userData.coverImage || ''
+        coverImage: userData.coverImage || '',
+        avatarFile: null,
+        coverFile: null
       });
     }
   }, [userData]);
+
+  // Test connection on component mount
+  useEffect(() => {
+    // Test the connection
+    const testAuth = async () => {
+      const testEndpoints = [
+        '/api/auth/test-connection',
+        '/auth/test-connection', 
+        '/api/test-connection',
+        '/test-connection'
+      ];
+
+      for (const endpoint of testEndpoints) {
+        try {
+          console.log(`🔄 Testing endpoint: ${endpoint}`);
+          const response = await API.get(endpoint);
+          console.log(`✅ Endpoint working: ${endpoint}`, response.data);
+          break;
+        } catch (error) {
+          console.log(`❌ Endpoint failed: ${endpoint}`, error.response?.status);
+        }
+      }
+    };
+    testAuth();
+  }, []);
 
   // Close modal when clicking outside
   useEffect(() => {
@@ -55,14 +83,14 @@ const Profile = () => {
 
     if (isEditing) {
       document.addEventListener('mousedown', handleClickOutside);
-      document.body.style.overflow = 'hidden'; // Prevent background scroll
+      document.body.style.overflow = 'hidden';
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.body.style.overflow = 'unset';
     };
-  }, [isEditing]); // Added isEditing as dependency
+  }, [isEditing]);
 
   // Check if username can be changed (30 days cooldown)
   const canChangeUsername = () => {
@@ -82,9 +110,8 @@ const Profile = () => {
     }
 
     setIsCheckingUsername(true);
-    // Simulate API call
     setTimeout(() => {
-      const available = Math.random() > 0.3; // 70% chance available
+      const available = Math.random() > 0.3;
       setIsUsernameAvailable(available);
       setIsCheckingUsername(false);
     }, 1000);
@@ -99,147 +126,163 @@ const Profile = () => {
     }
   };
 
- // Replace the current handleImageUpload function
-const handleImageUpload = async (e, type) => {
-  const file = e.target.files[0];
-  if (!file) return;
+  const handleImageUpload = async (e, type) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-  // Validate file type
-  if (!file.type.startsWith('image/')) {
-    alert('Please select an image file (JPG, PNG, etc.)');
-    return;
-  }
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file (JPG, PNG, etc.)');
+      return;
+    }
 
-  // Validate file size (5MB)
-  if (file.size > 5 * 1024 * 1024) {
-    alert('Image size should be less than 5MB');
-    return;
-  }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size should be less than 5MB');
+      return;
+    }
 
-  try {
-    // Create preview
-    const reader = new FileReader();
-    reader.onload = (e) => {
+    try {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (type === 'avatar') {
+          setTempAvatar(e.target.result);
+        } else {
+          setTempCover(e.target.result);
+        }
+      };
+      reader.readAsDataURL(file);
+
       if (type === 'avatar') {
-        setTempAvatar(e.target.result);
+        setEditForm(prev => ({ ...prev, avatarFile: file }));
       } else {
-        setTempCover(e.target.result);
+        setEditForm(prev => ({ ...prev, coverFile: file }));
       }
-    };
-    reader.readAsDataURL(file);
 
-    // Store file for later upload
-    if (type === 'avatar') {
-      setEditForm(prev => ({ ...prev, avatarFile: file }));
-    } else {
-      setEditForm(prev => ({ ...prev, coverFile: file }));
+      console.log(`✅ ${type} image selected for upload`);
+    } catch (error) {
+      console.error(`Error reading ${type} image:`, error);
+      alert(`Failed to process ${type} image`);
     }
+  };
 
-    console.log(`✅ ${type} image selected for upload`);
-  } catch (error) {
-    console.error(`Error reading ${type} image:`, error);
-    alert(`Failed to process ${type} image`);
-  }
-};
-
-
-// Replace the current handleSave function
-const handleSave = async () => {
-  try {
-    console.log('🟡 Starting profile update with images...');
+  // FIXED: Updated handleSave function with proper error handling and correct API endpoint
+  const handleSave = async () => {
+    if (isLoading) return;
     
-    const formData = new FormData();
-    
-    // Add text fields
-    formData.append('name', editForm.name);
-    formData.append('username', editForm.username);
-    formData.append('bio', editForm.bio);
-    formData.append('role', userData.role);
-    formData.append('semester', editForm.semester);
-    formData.append('batch', editForm.batch);
-    formData.append('subjects', JSON.stringify(editForm.subjects));
-    
-    // Add image files if they exist
-    if (editForm.avatarFile) {
-      console.log('📸 Adding avatar file to form data');
-      formData.append('avatar', editForm.avatarFile);
-    }
-    if (editForm.coverFile) {
-      console.log('📸 Adding cover file to form data');
-      formData.append('coverImage', editForm.coverFile);
-    }
-
-    console.log('📦 Sending profile update with form data');
-
-    const response = await API.put('/auth/profile-with-images', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
+    try {
+      setIsLoading(true);
+      console.log('🟡 Starting profile update with images...');
+      
+      const formData = new FormData();
+      
+      // Add text fields
+      formData.append('name', editForm.name);
+      formData.append('username', editForm.username);
+      formData.append('bio', editForm.bio);
+      formData.append('role', userData.role);
+      formData.append('semester', editForm.semester);
+      formData.append('batch', editForm.batch);
+      formData.append('subjects', JSON.stringify(editForm.subjects));
+      
+      // Add image files if they exist
+      if (editForm.avatarFile) {
+        console.log('📸 Adding avatar file to form data');
+        formData.append('avatar', editForm.avatarFile);
       }
+      if (editForm.coverFile) {
+        console.log('📸 Adding cover file to form data');
+        formData.append('coverImage', editForm.coverFile);
+      }
+
+      console.log('📦 Sending profile update with form data');
+
+      // Try multiple endpoint variations to find the correct one
+      let response;
+      let lastError;
+      
+      const endpoints = [
+        '/api/auth/profile-with-images',  // Most common
+        '/auth/profile-with-images',      // Without /api
+        '/api/profile-with-images',       // Without /auth
+        '/profile-with-images'           // Direct
+      ];
+
+      for (const endpoint of endpoints) {
+        try {
+          console.log(`🔄 Trying endpoint: ${endpoint}`);
+          response = await API.put(endpoint, formData, {
+            headers: {
+              'Content-Type': 'multipart/form-data'
+            }
+          });
+          console.log(`✅ Success with endpoint: ${endpoint}`);
+          break; // Exit loop if successful
+        } catch (error) {
+          lastError = error;
+          console.log(`❌ Failed with endpoint: ${endpoint}`, error.response?.status);
+          continue; // Try next endpoint
+        }
+      }
+
+      // If all endpoints failed
+      if (!response) {
+        throw new Error(`All endpoints failed. Last error: ${lastError?.message}`);
+      }
+      
+      console.log('✅ API Response received:', response.data);
+
+      if (response.data.success) {
+        console.log('🔄 Updated user data:', response.data.user);
+        updateUserData(response.data.user);
+        localStorage.setItem("trendzz_user", JSON.stringify(response.data.user));
+        
+        // Clear temporary files
+        setEditForm(prev => ({ ...prev, avatarFile: null, coverFile: null }));
+        setTempAvatar(null);
+        setTempCover(null);
+        
+        alert('✅ Profile updated successfully!');
+        setIsEditing(false);
+      } else {
+        throw new Error(response.data.message);
+      }
+
+    } catch (error) {
+      console.error('❌ Profile update error:', error);
+      let errorMessage = 'Unknown error occurred';
+      
+      if (error.response) {
+        errorMessage = error.response.data?.message || `Server error: ${error.response.status}`;
+        console.error('❌ Server response:', error.response.data);
+      } else if (error.request) {
+        errorMessage = 'Network error - No response from server. Please check your connection.';
+      } else {
+        errorMessage = error.message;
+      }
+      
+      alert('Error: ' + errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setEditForm({
+      name: userData?.name || '',
+      bio: userData?.bio || '',
+      username: userData?.username || '',
+      semester: userData?.semester || '',
+      batch: userData?.batch || '',
+      subjects: userData?.subjects || [],
+      avatar: userData?.avatar || '/avatars/avatar1.png',
+      coverImage: userData?.coverImage || '',
+      avatarFile: null,
+      coverFile: null
     });
-    
-    console.log('✅ API Response received:', response.data);
-
-    if (response.data.success) {
-      console.log('🔄 Updated user data:', response.data.user);
-      updateUserData(response.data.user);
-      localStorage.setItem("trendzz_user", JSON.stringify(response.data.user));
-      
-      // Clear temporary files
-      setEditForm(prev => ({ ...prev, avatarFile: null, coverFile: null }));
-      setTempAvatar(null);
-      setTempCover(null);
-      
-      alert('✅ Profile updated successfully!');
-      setIsEditing(false);
-    } else {
-      throw new Error(response.data.message);
-    }
-
-  } catch (error) {
-    console.error('❌ Profile update error:', error);
-    let errorMessage = 'Unknown error occurred';
-    
-    if (error.response) {
-      errorMessage = error.response.data?.message || `Server error: ${error.response.status}`;
-      console.error('❌ Server response:', error.response.data);
-    } else if (error.request) {
-      errorMessage = 'Network error - No response from server';
-    } else {
-      errorMessage = error.message;
-    }
-    
-    alert('Error: ' + errorMessage);
-  }
-};
-
-// Test the connection
-const testAuth = async () => {
-  try {
-    const response = await API.get('/auth/test-connection');
-    console.log('✅ Auth routes working:', response.data);
-  } catch (error) {
-    console.error('❌ Auth routes failed:', error);
-  }
-};
-testAuth();
-const handleCancel = () => {
-  setEditForm({
-    name: userData?.name || '',
-    bio: userData?.bio || '',
-    username: userData?.username || '',
-    semester: userData?.semester || '',
-    batch: userData?.batch || '',
-    subjects: userData?.subjects || [],
-    avatar: userData?.avatar || '/avatars/avatar1.png',
-    coverImage: userData?.coverImage || '',
-    avatarFile: null,
-    coverFile: null
-  });
-  setTempAvatar(null);
-  setTempCover(null);
-  setIsEditing(false);
-  setIsUsernameAvailable(null);
-};;
+    setTempAvatar(null);
+    setTempCover(null);
+    setIsEditing(false);
+    setIsUsernameAvailable(null);
+  };
 
   if (!userData) {
     return (
@@ -320,7 +363,7 @@ const handleCancel = () => {
             </div>
           </div>
 
-          {/* Edit Profile Button - UPDATED COLORS */}
+          {/* Edit Profile Button */}
           <div className="absolute top-72 right-4 sm:top-80 sm:right-6">
             <button
               onClick={() => setIsEditing(true)}
@@ -658,20 +701,29 @@ const handleCancel = () => {
                     </div>
                   </div>
 
-                  {/* Modal Footer - UPDATED BUTTON COLORS */}
+                  {/* Modal Footer */}
                   <div className="border-t border-gray-200 p-6 flex-shrink-0">
                     <div className="flex gap-3 justify-end">
                       <button
                         onClick={handleCancel}
-                        className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-red-50 hover:border-red-300 hover:text-red-700 transition-all font-medium duration-300"
+                        disabled={isLoading}
+                        className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-red-50 hover:border-red-300 hover:text-red-700 transition-all font-medium duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Cancel
                       </button>
                       <button
                         onClick={handleSave}
-                        className="px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-blue-900 transition font-medium"
+                        disabled={isLoading}
+                        className="px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-blue-900 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                       >
-                        Save Changes
+                        {isLoading ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                            Saving...
+                          </>
+                        ) : (
+                          'Save Changes'
+                        )}
                       </button>
                     </div>
                   </div>
