@@ -11,14 +11,35 @@ import {
   getUserProfile,
   updateUserProfileWithImages,
   uploadProfileImage,
-  upload
+  upload // ✅ Use the existing upload from controller
 } from "../controllers/userController.js";
 import requireAuth from "../middleware/authMiddleware.js";
+import cloudinary from '../config/cloudinary.js';
 
 const router = express.Router();
 
-
-
+// Cloudinary helper function
+const uploadToCloudinary = async (fileBuffer, folder) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: `social-media/${folder}`,
+        resource_type: 'image',
+        transformation: [
+          { width: 1000, height: 1000, crop: 'limit' },
+          { quality: 'auto' },
+          { format: 'webp' }
+        ]
+      },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      }
+    );
+    
+    uploadStream.end(fileBuffer);
+  });
+};
 
 /**
  * ✅ DEBUG ROUTES - TEST CONNECTION
@@ -54,9 +75,111 @@ router.get("/profile-original", requireAuth, (req, res) => {
 });
 
 /**
- * ✅ PROFILE ORIGINAL ROUTE - PUT (THIS WAS MISSING!)
+ * ✅ PROFILE WITH IMAGES UPLOAD ROUTE
  */
+router.put("/profile-with-images", requireAuth, upload.fields([
+  { name: 'avatar', maxCount: 1 },
+  { name: 'coverImage', maxCount: 1 }
+]), async (req, res) => {
+  try {
+    console.log("🎯 PROFILE-WITH-IMAGES - Request received");
+    console.log("📦 Request body:", req.body);
+    console.log("📸 Files received:", req.files);
 
+    const {
+      name,
+      username,
+      bio,
+      role,
+      semester,
+      batch,
+      subjects
+    } = req.body;
+
+    const userId = req.user._id;
+
+    // Prepare update data
+    const updateData = {
+      name,
+      username,
+      bio,
+      role,
+      semester,
+      batch,
+      subjects: subjects ? JSON.parse(subjects) : []
+    };
+
+    console.log("📦 Initial update data:", updateData);
+
+    // Handle avatar upload
+    if (req.files && req.files.avatar) {
+      try {
+        console.log("📸 Uploading avatar to Cloudinary...");
+        const avatarResult = await uploadToCloudinary(req.files.avatar[0].buffer, 'avatars');
+        updateData.avatar = avatarResult.secure_url;
+        console.log("✅ Avatar uploaded:", avatarResult.secure_url);
+      } catch (avatarError) {
+        console.error("❌ Avatar upload failed:", avatarError);
+        return res.status(400).json({
+          success: false,
+          message: "Failed to upload avatar image"
+        });
+      }
+    }
+
+    // Handle cover image upload
+    if (req.files && req.files.coverImage) {
+      try {
+        console.log("📸 Uploading cover image to Cloudinary...");
+        const coverResult = await uploadToCloudinary(req.files.coverImage[0].buffer, 'covers');
+        updateData.coverImage = coverResult.secure_url;
+        console.log("✅ Cover image uploaded:", coverResult.secure_url);
+      } catch (coverError) {
+        console.error("❌ Cover image upload failed:", coverError);
+        return res.status(400).json({
+          success: false,
+          message: "Failed to upload cover image"
+        });
+      }
+    }
+
+    console.log("📦 Final update data with images:", updateData);
+
+    // Update user in database
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      updateData,
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    console.log("✅ USER UPDATED SUCCESSFULLY:", updatedUser.username);
+
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      user: updatedUser
+    });
+
+  } catch (error) {
+    console.error("❌ Profile with images update error:", error);
+    
+    if (error.code === 11000 && error.keyPattern.username) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Username already taken. Please choose another one." 
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false,
+      message: "Server error during profile update: " + error.message 
+    });
+  }
+});
+
+/**
+ * ✅ PROFILE ORIGINAL ROUTE - PUT
+ */
 // Simple test PUT route
 router.put("/test-put", requireAuth, (req, res) => {
   console.log("✅ PUT /test-put route working!");
