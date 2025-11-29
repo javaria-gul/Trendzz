@@ -1,3 +1,4 @@
+// frontend/src/components/ChatSidebar.jsx
 import React, { useState, useEffect } from "react";
 import { Search, MessageSquare, Users } from "lucide-react";
 

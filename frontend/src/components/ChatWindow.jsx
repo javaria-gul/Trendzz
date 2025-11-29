@@ -1,3 +1,4 @@
+// frontend/src/components/ChatWindow.jsx
 import React, { useState, useRef, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { Send, Image, Paperclip, Smile, MoreVertical } from "lucide-react";

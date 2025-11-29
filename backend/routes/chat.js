@@ -1,3 +1,4 @@
+// backend/routes/chat.js
 import express from "express";
 import { Chat, Message } from "../models/Chat.js";
 import User from "../models/User.js";
