@@ -1,5 +1,21 @@
 import API from "./api";
 
+// Update profile with image upload
+// Change to use the new endpoint
+export const updateProfile = (formData) => API.put('/auth/profile-with-images', formData, {
+  headers: {
+    'Content-Type': 'multipart/form-data'
+  }
+});
+
+// Upload image only
+export const uploadImage = (formData) => API.post('/auth/upload-image', formData, {
+  headers: {
+    'Content-Type': 'multipart/form-data'
+  }
+});
+
+
 // ML-based suggested users for onboarding
 export const getSuggestedUsers = () => API.get("/suggestions/strict");
 
@@ -18,20 +34,13 @@ export const searchUsers = async (query) => {
   }
 };
 
-// Add this to your existing user services
-export const unblockUser = async (userId) => {
-  try {
-    const response = await API.put(`/users/unblock/${userId}`);
-    return response;
-  } catch (error) {
-    console.error('Error unblocking user:', error);
-    throw error;
-  }
-};
-// services/user.js
+// Block user - FIXED ENDPOINT
+export const blockUser = (userId) => API.post(`/users/block/${userId}`);
 
+// FIX: Change unblockUser from PUT to POST to match backend
+export const unblockUser = (userId) => API.post(`http://localhost:5000/api/users/unblock/${userId}`);
+// services/user.js
 export const getUserProfile = (userId) => API.get(`/users/profile/${userId}`);
 export const followUser = (userId) => API.post(`/users/follow/${userId}`);
 export const admireUser = (userId) => API.post(`/users/admire/${userId}`);
-export const blockUser = (userId) => API.post(`/users/block/${userId}`);
 export const debugAllUsers = () => API.get('/users/debug/all-users');

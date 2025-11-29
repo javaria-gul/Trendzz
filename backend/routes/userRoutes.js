@@ -71,16 +71,36 @@ router.get("/search", requireAuth, async (req, res) => {
   }
 });
 
-// Get user profile by ID
+// Get user profile by ID - FIXED BLOCK CHECK
 router.get("/profile/:userId", requireAuth, async (req, res) => {
   try {
-    console.log("🔍 Fetching profile for:", req.params.userId);
+    const targetUserId = req.params.userId;
+    const currentUserId = req.user._id;
+
+    console.log("🔍 Fetching profile for:", targetUserId, "by user:", currentUserId);
     
-    const user = await User.findById(req.params.userId)
+    // Check if current user has blocked this user
+    const currentUser = await User.findById(currentUserId);
+    if (currentUser.blockedUsers && currentUser.blockedUsers.includes(targetUserId)) {
+      console.log("🚫 User is blocked, returning limited profile");
+      const blockedUser = await User.findById(targetUserId)
+        .select("name username avatar coverImage")
+        .lean();
+      
+      return res.json({
+        success: true,
+        data: {
+          ...blockedUser,
+          isBlocked: true
+        }
+      });
+    }
+
+    const user = await User.findById(targetUserId)
       .select("-password -emailVerificationToken -emailVerificationExpires");
 
     if (!user) {
-      console.log("❌ User not found:", req.params.userId);
+      console.log("❌ User not found:", targetUserId);
       return res.status(404).json({ 
         success: false,
         message: "User not found" 
@@ -129,14 +149,10 @@ router.get("/profile/:userId", requireAuth, async (req, res) => {
     }
 
     // Check if current user is following this user
-    const isFollowing = followers.some(follower => 
-      follower._id.toString() === req.user._id.toString()
-    );
+    const isFollowing = currentUser.following && currentUser.following.includes(targetUserId);
 
     // Check if current user has admired this user
-    const hasAdmired = admirers.some(admirer => 
-      admirer._id.toString() === req.user._id.toString()
-    );
+    const hasAdmired = user.admirers && user.admirers.includes(currentUserId);
 
     console.log("📊 Profile stats - Following:", isFollowing, "Admired:", hasAdmired);
 
@@ -159,10 +175,13 @@ router.get("/profile/:userId", requireAuth, async (req, res) => {
       admirersCount: user.admirersCount || 0,
       privacySettings: user.privacySettings,
       createdAt: user.createdAt,
+      lastSeen: user.lastSeen,
       isFollowing: isFollowing,
       hasAdmired: hasAdmired,
       followersCount: followers.length,
-      followingCount: following.length
+      followingCount: following.length,
+      postsCount: user.postsCount || 0,
+      isBlocked: false
     };
 
     console.log("📤 Sending profile data for:", user.name);
@@ -180,7 +199,6 @@ router.get("/profile/:userId", requireAuth, async (req, res) => {
     });
   }
 });
-
 
 // DEBUG: Test profile update
 router.put("/test-update", requireAuth, async (req, res) => {
@@ -335,11 +353,13 @@ router.post("/admire/:userId", requireAuth, async (req, res) => {
   }
 });
 
-// Block user
+// Block user - FIXED VERSION
 router.post("/block/:userId", requireAuth, async (req, res) => {
   try {
     const targetUserId = req.params.userId;
     const currentUserId = req.user._id;
+
+    console.log("🚫 Block request - User:", currentUserId, "Blocking:", targetUserId);
 
     if (targetUserId === currentUserId.toString()) {
       return res.status(400).json({
@@ -348,9 +368,42 @@ router.post("/block/:userId", requireAuth, async (req, res) => {
       });
     }
 
+    // Check if user exists
+    const targetUser = await User.findById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Check if already blocked
+    const currentUser = await User.findById(currentUserId);
+    if (currentUser.blockedUsers && currentUser.blockedUsers.includes(targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: "User is already blocked"
+      });
+    }
+
+    // Add to blocked users and remove from followers/following
     await User.findByIdAndUpdate(currentUserId, {
-      $addToSet: { blockedUsers: targetUserId }
+      $addToSet: { blockedUsers: targetUserId },
+      $pull: { 
+        followers: targetUserId,
+        following: targetUserId
+      }
     });
+
+    // Remove current user from target user's followers/following
+    await User.findByIdAndUpdate(targetUserId, {
+      $pull: { 
+        followers: currentUserId,
+        following: currentUserId
+      }
+    });
+
+    console.log("✅ User blocked successfully");
 
     res.json({
       success: true,
@@ -358,19 +411,93 @@ router.post("/block/:userId", requireAuth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Block user error:", error);
+    console.error("❌ Block user error:", error);
     res.status(500).json({
       success: false,
-      message: "Server error"
+      message: "Server error while blocking user"
     });
   }
+});
+
+// UNBLOCK USER - ADD THIS MISSING ENDPOINT
+// UNBLOCK USER - ENHANCED WITH DEBUG LOGGING
+router.post("/unblock/:userId", requireAuth, async (req, res) => {
+  try {
+    const targetUserId = req.params.userId;
+    const currentUserId = req.user._id;
+
+    console.log("🔓 Unblock request - User:", currentUserId, "Unblocking:", targetUserId);
+    console.log("🔓 Request params:", req.params);
+    console.log("🔓 Current user ID from auth:", req.user._id);
+
+    if (targetUserId === currentUserId.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot unblock yourself"
+      });
+    }
+
+    // Check if user exists
+    const targetUser = await User.findById(targetUserId);
+    if (!targetUser) {
+      console.log("❌ Target user not found:", targetUserId);
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Check if user is actually blocked
+    const currentUser = await User.findById(currentUserId);
+    console.log("🔓 Current user blockedUsers:", currentUser.blockedUsers);
+    console.log("🔓 Looking for targetUserId in blockedUsers:", targetUserId);
+    
+    if (!currentUser.blockedUsers || !currentUser.blockedUsers.includes(targetUserId)) {
+      console.log("❌ User is not in blocked list");
+      return res.status(400).json({
+        success: false,
+        message: "User is not blocked"
+      });
+    }
+
+    // Remove from blocked users
+    const updatedUser = await User.findByIdAndUpdate(
+      currentUserId,
+      { $pull: { blockedUsers: targetUserId } },
+      { new: true }
+    );
+
+    console.log("✅ User unblocked successfully");
+    console.log("✅ Updated blockedUsers:", updatedUser.blockedUsers);
+
+    res.json({
+      success: true,
+      message: "User unblocked successfully"
+    });
+
+  } catch (error) {
+    console.error("❌ Unblock user error:", error);
+    console.error("❌ Error details:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server error while unblocking user: " + error.message
+    });
+  }
+});
+// Add this temporary debug route to test routing
+router.get("/debug-test", requireAuth, (req, res) => {
+  res.json({ 
+    success: true, 
+    message: "User routes are working",
+    currentTime: new Date().toISOString()
+  });
 });
 
 // DEBUG: Get all users for testing
 router.get("/debug/all-users", requireAuth, async (req, res) => {
   try {
     const allUsers = await User.find({})
-      .select("name username email role semester batch createdAt")
+      .select("name username email role semester batch createdAt blockedUsers")
       .lean();
     
     console.log("Total users in database:", allUsers.length);

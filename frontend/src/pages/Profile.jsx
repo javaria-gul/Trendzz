@@ -7,16 +7,18 @@ import API from '../services/api';
 const Profile = () => {
   const { userData, updateUserData } = useContext(AuthContext);
   const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({
-    name: userData?.name || '',
-    bio: userData?.bio || '',
-    username: userData?.username || '',
-    semester: userData?.semester || '',
-    batch: userData?.batch || '',
-    subjects: userData?.subjects || [],
-    avatar: userData?.avatar || '/avatars/avatar1.png',
-    coverImage: userData?.coverImage || ''
-  });
+ const [editForm, setEditForm] = useState({
+  name: userData?.name || '',
+  bio: userData?.bio || '',
+  username: userData?.username || '',
+  semester: userData?.semester || '',
+  batch: userData?.batch || '',
+  subjects: userData?.subjects || [],
+  avatar: userData?.avatar || '/avatars/avatar1.png',
+  coverImage: userData?.coverImage || '',
+  avatarFile: null, // Add this
+  coverFile: null   // Add this
+});
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [isUsernameAvailable, setIsUsernameAvailable] = useState(null);
   const [usernameChangeTime, setUsernameChangeTime] = useState(userData?.lastUsernameChange || null);
@@ -97,75 +99,147 @@ const Profile = () => {
     }
   };
 
-  const handleImageUpload = async (e, type) => {
-    alert('Image upload temporarily disabled. Please update text data first.');
+ // Replace the current handleImageUpload function
+const handleImageUpload = async (e, type) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  // Validate file type
+  if (!file.type.startsWith('image/')) {
+    alert('Please select an image file (JPG, PNG, etc.)');
     return;
-  };
+  }
 
-  const handleSave = async () => {
-    try {
-      console.log('🟡 Starting profile update...');
-      
-      const updatedData = {
-        name: editForm.name,
-        username: editForm.username,
-        bio: editForm.bio,
-        role: userData.role,
-        semester: editForm.semester,
-        batch: editForm.batch,
-        subjects: editForm.subjects,
-        avatar: editForm.avatar,
-        coverImage: editForm.coverImage
-      };
+  // Validate file size (5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    alert('Image size should be less than 5MB');
+    return;
+  }
 
-      console.log('📦 Sending profile update data:', updatedData);
-
-      const response = await API.put('/auth/profile', updatedData);
-      
-      console.log('✅ API Response received:', response.data);
-
-      if (response.data.success) {
-        updateUserData(response.data.user);
-        localStorage.setItem("trendzz_user", JSON.stringify(response.data.user));
-        
-        alert('✅ Profile updated successfully!');
-        setIsEditing(false);
+  try {
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (type === 'avatar') {
+        setTempAvatar(e.target.result);
       } else {
-        throw new Error(response.data.message);
+        setTempCover(e.target.result);
       }
+    };
+    reader.readAsDataURL(file);
 
-    } catch (error) {
-      console.error('❌ Profile update error:', error);
-      let errorMessage = 'Unknown error occurred';
-      
-      if (error.response) {
-        errorMessage = error.response.data?.message || `Server error: ${error.response.status}`;
-      } else if (error.request) {
-        errorMessage = 'Network error - No response from server';
-      } else {
-        errorMessage = error.message;
-      }
-      
-      alert('Error: ' + errorMessage);
+    // Store file for later upload
+    if (type === 'avatar') {
+      setEditForm(prev => ({ ...prev, avatarFile: file }));
+    } else {
+      setEditForm(prev => ({ ...prev, coverFile: file }));
     }
-  };
 
-  const handleCancel = () => {
-    setEditForm({
-      name: userData?.name || '',
-      bio: userData?.bio || '',
-      username: userData?.username || '',
-      semester: userData?.semester || '',
-      batch: userData?.batch || '',
-      subjects: userData?.subjects || [],
-      avatar: userData?.avatar || '/avatars/avatar1.png',
-      coverImage: userData?.coverImage || ''
+    console.log(`✅ ${type} image selected for upload`);
+  } catch (error) {
+    console.error(`Error reading ${type} image:`, error);
+    alert(`Failed to process ${type} image`);
+  }
+};
+
+
+// Replace the current handleSave function
+const handleSave = async () => {
+  try {
+    console.log('🟡 Starting profile update with images...');
+    
+    const formData = new FormData();
+    
+    // Add text fields
+    formData.append('name', editForm.name);
+    formData.append('username', editForm.username);
+    formData.append('bio', editForm.bio);
+    formData.append('role', userData.role);
+    formData.append('semester', editForm.semester);
+    formData.append('batch', editForm.batch);
+    formData.append('subjects', JSON.stringify(editForm.subjects));
+    
+    // Add image files if they exist
+    if (editForm.avatarFile) {
+      console.log('📸 Adding avatar file to form data');
+      formData.append('avatar', editForm.avatarFile);
+    }
+    if (editForm.coverFile) {
+      console.log('📸 Adding cover file to form data');
+      formData.append('coverImage', editForm.coverFile);
+    }
+
+    console.log('📦 Sending profile update with form data');
+
+    const response = await API.put('/auth/profile-with-images', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
     });
-    setTempAvatar(null);
-    setTempCover(null);
-    setIsEditing(false);
-    setIsUsernameAvailable(null);
-  };
+    
+    console.log('✅ API Response received:', response.data);
+
+    if (response.data.success) {
+      console.log('🔄 Updated user data:', response.data.user);
+      updateUserData(response.data.user);
+      localStorage.setItem("trendzz_user", JSON.stringify(response.data.user));
+      
+      // Clear temporary files
+      setEditForm(prev => ({ ...prev, avatarFile: null, coverFile: null }));
+      setTempAvatar(null);
+      setTempCover(null);
+      
+      alert('✅ Profile updated successfully!');
+      setIsEditing(false);
+    } else {
+      throw new Error(response.data.message);
+    }
+
+  } catch (error) {
+    console.error('❌ Profile update error:', error);
+    let errorMessage = 'Unknown error occurred';
+    
+    if (error.response) {
+      errorMessage = error.response.data?.message || `Server error: ${error.response.status}`;
+      console.error('❌ Server response:', error.response.data);
+    } else if (error.request) {
+      errorMessage = 'Network error - No response from server';
+    } else {
+      errorMessage = error.message;
+    }
+    
+    alert('Error: ' + errorMessage);
+  }
+};
+
+// Test the connection
+const testAuth = async () => {
+  try {
+    const response = await API.get('/auth/test-connection');
+    console.log('✅ Auth routes working:', response.data);
+  } catch (error) {
+    console.error('❌ Auth routes failed:', error);
+  }
+};
+testAuth();
+const handleCancel = () => {
+  setEditForm({
+    name: userData?.name || '',
+    bio: userData?.bio || '',
+    username: userData?.username || '',
+    semester: userData?.semester || '',
+    batch: userData?.batch || '',
+    subjects: userData?.subjects || [],
+    avatar: userData?.avatar || '/avatars/avatar1.png',
+    coverImage: userData?.coverImage || '',
+    avatarFile: null,
+    coverFile: null
+  });
+  setTempAvatar(null);
+  setTempCover(null);
+  setIsEditing(false);
+  setIsUsernameAvailable(null);
+};;
 
   if (!userData) {
     return (
@@ -257,8 +331,7 @@ const Profile = () => {
             </button>
           </div>
         </motion.div>
-
-        {/* Rest of your profile content remains the same */}
+        
         {/* Social Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
           <motion.div

@@ -1,6 +1,32 @@
 // backend/models/User.js
 import mongoose from "mongoose";
-
+// Debug: Check if user model has coverImage field
+export const checkUserModel = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    
+    // Check if coverImage field exists in the schema
+    const userSchema = User.schema.obj;
+    const hasCoverImageField = 'coverImage' in userSchema;
+    
+    res.json({
+      success: true,
+      user: {
+        _id: user._id,
+        name: user.name,
+        avatar: user.avatar,
+        coverImage: user.coverImage,
+        hasCoverImage: !!user.coverImage
+      },
+      schema: {
+        hasCoverImageField: hasCoverImageField,
+        coverImageType: userSchema.coverImage ? typeof userSchema.coverImage : 'undefined'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
@@ -8,7 +34,9 @@ const userSchema = new mongoose.Schema({
   firstLogin: { type: Boolean, default: true },
   username: { type: String, unique: true, sparse: true },
   avatar: { type: String, default: "/avatars/avatar1.png" },
-  bio: { type: String, default: "" }, // ✅ ADD THIS
+   coverImage: { type: String, default: "" }, // ✅ Make sure this exists
+  bio: { type: String, default: "" },
+  
 
   role: { type: String, enum: ["student", "faculty"], default: null },
   semester: { type: String, default: null },
@@ -20,6 +48,8 @@ const userSchema = new mongoose.Schema({
   admirers: { type: [mongoose.Schema.Types.ObjectId], ref: "User", default: [] },
   admirersCount: { type: Number, default: 0 },
   blockedUsers: { type: [mongoose.Schema.Types.ObjectId], ref: "User", default: [] },
+  postsCount: { type: Number, default: 0 },
+lastSeen: { type: Date, default: Date.now },
 
   // Email verification fields
   isEmailVerified: { type: Boolean, default: false },

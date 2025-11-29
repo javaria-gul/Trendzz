@@ -431,6 +431,7 @@ const Onboarding = () => {
     }
   };
 
+  // FIXED: Simple handleComplete function that uses AuthContext
   const handleComplete = async () => {
     try {
       console.log('Final Form Data:', formData);
@@ -447,32 +448,22 @@ const Onboarding = () => {
         firstLogin: false
       };
 
-      console.log('📦 Sending onboarding data:', onboardingData);
+      console.log('📦 Sending onboarding data via AuthContext...');
 
-      const response = await API.put('/auth/profile', onboardingData);
-
-      if (response.data.success) {
-        const userProfile = {
-          ...response.data.user,
-          firstLogin: false
-        };
-
-        completeOnboarding(userProfile);
-        localStorage.setItem("trendzz_user", JSON.stringify(userProfile));
-        
-        console.log('✅ Onboarding completed successfully:', userProfile);
-        navigate("/", { replace: true });
-      } else {
-        throw new Error(response.data.message);
-      }
+      // Use the AuthContext's completeOnboarding function
+      const userProfile = await completeOnboarding(onboardingData);
+      
+      console.log('✅ Onboarding completed successfully!', userProfile);
+      navigate("/", { replace: true });
 
     } catch (error) {
       console.error('❌ Error completing onboarding:', error);
+      
       const errorMessage = error.response?.data?.message ||
         error.message ||
         'Failed to complete profile. Please try again.';
 
-      alert(errorMessage);
+      alert(`Error: ${errorMessage}`);
 
       if (error.response?.data?.message?.includes('Username already taken')) {
         setCurrentStep(1);

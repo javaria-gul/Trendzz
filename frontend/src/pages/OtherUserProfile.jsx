@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
@@ -32,12 +32,23 @@ const OtherUserProfile = () => {
   const [isAdmireLoading, setIsAdmireLoading] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState('');
+  const [isBlockLoading, setIsBlockLoading] = useState(false);
 
-  // Check if user is blocked
-  const checkIfBlocked = () => {
+  // Enhanced check if user is blocked - using useCallback to fix ESLint warnings
+  const checkIfBlocked = useCallback(() => {
     if (!currentUser || !currentUser.blockedUsers) return false;
-    return currentUser.blockedUsers.includes(userId);
-  };
+    return currentUser.blockedUsers.some(blockedUser => 
+      (typeof blockedUser === 'object' ? blockedUser._id : blockedUser).toString() === userId
+    );
+  }, [currentUser, userId]);
+
+  // Update block status when currentUser changes
+  useEffect(() => {
+    if (currentUser) {
+      const blocked = checkIfBlocked();
+      setIsBlocked(blocked);
+    }
+  }, [currentUser, userId, checkIfBlocked]);
 
   // Fetch user profile data
   useEffect(() => {
@@ -45,16 +56,27 @@ const OtherUserProfile = () => {
       setIsLoading(true);
       setError('');
       
-      // Check if user is blocked before fetching
-      const blocked = checkIfBlocked();
-      setIsBlocked(blocked);
-      
-      if (blocked) {
-        setIsLoading(false);
-        return;
-      }
-
       try {
+        // Always check current block status from context first
+        const blocked = checkIfBlocked();
+        setIsBlocked(blocked);
+        
+        if (blocked) {
+          // If blocked, we still want to get basic user info for display
+          try {
+            const response = await getUserProfile(userId);
+            if (response.data.success) {
+              setUserProfile(response.data.data);
+            }
+          } catch (error) {
+            // If we can't fetch profile for blocked user, set minimal data
+            console.log('User is blocked, showing blocked view');
+          }
+          setIsLoading(false);
+          return;
+        }
+
+        // Normal profile fetch for unblocked users
         const response = await getUserProfile(userId);
         
         if (response.data.success) {
@@ -77,7 +99,7 @@ const OtherUserProfile = () => {
     if (userId) {
       fetchUserProfile();
     }
-  }, [userId, currentUser]);
+  }, [userId, checkIfBlocked]);
 
   // Follow functionality
   const handleFollow = async () => {
@@ -122,10 +144,14 @@ const OtherUserProfile = () => {
     }
   };
 
-  // Block functionality
+  // Enhanced Block functionality
   const handleBlockUser = async () => {
+    setIsBlockLoading(true);
     try {
+      console.log('🚫 Blocking user:', userId);
       const response = await blockUser(userId);
+      console.log('✅ Block response:', response.data);
+      
       if (response.data.success) {
         setShowOptions(false);
         setShowBlockConfirm(false);
@@ -142,25 +168,40 @@ const OtherUserProfile = () => {
         setIsBlocked(true);
         
         // Show success message without alert window
-        setShowSuccessMessage(`${userProfile.name} has been blocked`);
+        setShowSuccessMessage(`${userProfile?.name || 'User'} has been blocked`);
         setTimeout(() => setShowSuccessMessage(''), 3000);
         
+      } else {
+        throw new Error(response.data.message || 'Failed to block user');
       }
     } catch (error) {
       console.error('Error blocking user:', error);
+      console.error('Error details:', error.response?.data);
       alert(error.response?.data?.message || 'Failed to block user');
       setShowBlockConfirm(false);
+    } finally {
+      setIsBlockLoading(false);
     }
   };
 
-  // Unblock functionality
+  // Enhanced Unblock functionality with better error handling
   const handleUnblockUser = async () => {
+    setIsBlockLoading(true);
     try {
+      console.log('🔓 Attempting to unblock user:', userId);
+      
       const response = await unblockUser(userId);
+      console.log('✅ Unblock response:', response.data);
+      
       if (response.data.success) {
         // Update current user's blocked list
         if (currentUser && updateUserData) {
-          const updatedBlockedUsers = (currentUser.blockedUsers || []).filter(id => id !== userId);
+          const updatedBlockedUsers = (currentUser.blockedUsers || []).filter(id => 
+            id.toString() !== userId.toString()
+          );
+          
+          console.log('🔄 Updating user data with blockedUsers:', updatedBlockedUsers);
+          
           updateUserData({
             ...currentUser,
             blockedUsers: updatedBlockedUsers
@@ -169,22 +210,46 @@ const OtherUserProfile = () => {
         
         setIsBlocked(false);
         
-        // Refresh the profile
-        const profileResponse = await getUserProfile(userId);
-        if (profileResponse.data.success) {
-          const userData = profileResponse.data.data;
-          setUserProfile(userData);
-          setIsFollowing(userData.isFollowing || false);
-          setHasAdmired(userData.hasAdmired || false);
+        // Refresh the profile to get full user data
+        try {
+          console.log('🔄 Refreshing user profile after unblock...');
+          const profileResponse = await getUserProfile(userId);
+          if (profileResponse.data.success) {
+            const userData = profileResponse.data.data;
+            setUserProfile(userData);
+            setIsFollowing(userData.isFollowing || false);
+            setHasAdmired(userData.hasAdmired || false);
+            console.log('✅ Profile refreshed successfully');
+          }
+        } catch (profileError) {
+          console.error('❌ Error refreshing profile after unblock:', profileError);
+          // Even if profile refresh fails, we can still show the unblocked view
         }
         
-        // Show success message without alert window
-        setShowSuccessMessage(`${userProfile.name} has been unblocked`);
+        // Show success message
+        setShowSuccessMessage(`${userProfile?.name || 'User'} has been unblocked`);
         setTimeout(() => setShowSuccessMessage(''), 3000);
+      } else {
+        throw new Error(response.data.message || 'Failed to unblock user');
       }
     } catch (error) {
-      console.error('Error unblocking user:', error);
-      alert(error.response?.data?.message || 'Failed to unblock user');
+      console.error('❌ Error unblocking user:', error);
+      console.error('❌ Error response:', error.response?.data);
+      console.error('❌ Error status:', error.response?.status);
+      
+      let errorMessage = 'Failed to unblock user. Please try again.';
+      
+      if (error.response?.status === 404) {
+        errorMessage = 'Unblock endpoint not found. Please check server configuration.';
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      alert(errorMessage);
+    } finally {
+      setIsBlockLoading(false);
     }
   };
 
@@ -250,7 +315,7 @@ const OtherUserProfile = () => {
     );
   }
 
-  if (error) {
+  if (error && !isBlocked) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -366,10 +431,19 @@ const OtherUserProfile = () => {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={handleUnblockUser}
-                    className="px-6 py-3 bg-blue-900 text-white rounded-lg hover:bg-red-700 transition font-medium shadow-lg"
+                    disabled={isBlockLoading}
+                    className={`px-6 py-3 bg-blue-900 text-white rounded-lg hover:bg-red-700 transition font-medium shadow-lg ${
+                      isBlockLoading ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
                   >
-                    <Shield className="inline mr-2" size={20} />
-                    Unblock User
+                    {isBlockLoading ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mx-auto"></div>
+                    ) : (
+                      <>
+                        <Shield className="inline mr-2" size={20} />
+                        Unblock User
+                      </>
+                    )}
                   </motion.button>
                 </div>
               </div>
@@ -484,9 +558,12 @@ const OtherUserProfile = () => {
                   </button>
                   <button
                     onClick={handleBlockUser}
-                    className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium"
+                    disabled={isBlockLoading}
+                    className={`px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium ${
+                      isBlockLoading ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
                   >
-                    Block User
+                    {isBlockLoading ? 'Blocking...' : 'Block User'}
                   </button>
                 </div>
               </div>
@@ -615,11 +692,7 @@ const OtherUserProfile = () => {
           </div>
         </motion.div>
 
-        {/* Rest of your profile content remains the same */}
-        {/* ... (Social Stats, Academic Information, Personal Information, Recent Followers) */}
-
-
-                {/* Profile Details Grid */}
+        {/* Profile Details Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
           {/* Social Stats */}
           <motion.div
@@ -777,8 +850,6 @@ const OtherUserProfile = () => {
             </div>
           </motion.div>
         )}
-
-      
       </div>
     </div>
   );

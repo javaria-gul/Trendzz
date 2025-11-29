@@ -8,11 +8,136 @@ import {
   registerUser, 
   loginUser, 
   updateUserProfile,
-  getUserProfile 
+  getUserProfile,
+  updateUserProfileWithImages,
+  uploadProfileImage,
+  upload
 } from "../controllers/userController.js";
 import requireAuth from "../middleware/authMiddleware.js";
 
 const router = express.Router();
+
+
+
+
+/**
+ * ✅ DEBUG ROUTES - TEST CONNECTION
+ */
+// Test if auth routes are accessible
+router.get("/test", (req, res) => {
+  res.json({
+    success: true,
+    message: "Auth routes are working!",
+    path: "/api/auth/test"
+  });
+});
+
+// Test protected route
+router.get("/test-protected", requireAuth, (req, res) => {
+  res.json({
+    success: true,
+    message: "Protected auth route is working!",
+    user: {
+      id: req.user._id,
+      email: req.user.email
+    }
+  });
+});
+
+// Test the exact profile-original route with GET
+router.get("/profile-original", requireAuth, (req, res) => {
+  res.json({
+    success: true,
+    message: "GET /profile-original is working!",
+    user: req.user
+  });
+});
+
+/**
+ * ✅ PROFILE ORIGINAL ROUTE - PUT (THIS WAS MISSING!)
+ */
+
+// Simple test PUT route
+router.put("/test-put", requireAuth, (req, res) => {
+  console.log("✅ PUT /test-put route working!");
+  res.json({
+    success: true,
+    message: "PUT route is working!",
+    receivedData: req.body
+  });
+});
+
+router.put("/profile-original", requireAuth, 
+  [
+    body("username")
+      .optional()
+      .isLength({ min: 3, max: 20 })
+      .withMessage("Username must be 3-20 characters")
+      .matches(/^[a-zA-Z0-9_ ]+$/)
+      .withMessage("Username can only contain letters, numbers, underscores and spaces"),
+    body("role")
+      .optional()
+      .isIn(["student", "faculty"])
+      .withMessage("Role must be either student or faculty"),
+  ],
+  async (req, res) => {
+    try {
+      console.log("🔵 PROFILE-ORIGINAL - Request received:", req.body);
+      console.log("🔵 PROFILE-ORIGINAL - User ID:", req.user._id);
+      
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          success: false,
+          message: errors.array()[0].msg 
+        });
+      }
+
+      // Update user directly
+      const updatedUser = await User.findByIdAndUpdate(
+        req.user._id,
+        {
+          username: req.body.username,
+          name: req.body.name || req.body.username,
+          avatar: req.body.avatar,
+          role: req.body.role,
+          semester: req.body.semester,
+          batch: req.body.batch,
+          subjects: req.body.subjects || [],
+          bio: req.body.bio || `Hey! I'm ${req.body.username} on Trendzz!`,
+          firstLogin: false
+        },
+        { new: true }
+      ).select("-password");
+
+      console.log("✅ PROFILE-ORIGINAL - User updated successfully:", updatedUser);
+
+      res.json({
+        success: true,
+        message: "Profile updated successfully",
+        user: updatedUser
+      });
+
+    } catch (error) {
+      console.error("❌ PROFILE-ORIGINAL - Error:", error);
+      
+      if (error.code === 11000) {
+        return res.status(400).json({
+          success: false,
+          message: "Username already taken"
+        });
+      }
+      
+      res.status(500).json({
+        success: false,
+        message: "Server error: " + error.message
+      });
+    }
+  }
+);
+
+// Separate image upload endpoint (optional)
+router.post('/upload-image', requireAuth, upload.single('image'), uploadProfileImage);
 
 /**
  * REGISTER ROUTE
@@ -57,9 +182,9 @@ router.post(
 );
 
 /**
- * UPDATE USER PROFILE (ONBOARDING COMPLETION)
+ * UPDATE USER PROFILE (ONBOARDING COMPLETION) - TEXT ONLY
  */
-router.put("/profile", requireAuth, 
+router.put("/profile-text", requireAuth, 
   [
     body("username")
       .optional()
@@ -96,6 +221,18 @@ router.get("/debug/test", requireAuth, (req, res) => {
     success: true,
     message: "Backend is working",
     user: req.user
+  });
+});
+
+// Add this to authRoutes.js for testing
+router.get("/test-connection", requireAuth, (req, res) => {
+  res.json({
+    success: true,
+    message: "Auth routes are working!",
+    user: {
+      id: req.user._id,
+      email: req.user.email
+    }
   });
 });
 
