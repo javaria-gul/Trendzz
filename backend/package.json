@@ -20,10 +20,11 @@
     "express": "^5.1.0",
     "express-validator": "^7.3.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.19.3",
+    "mongoose": "^8.20.1",
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.10",
+    "socket.io": "^4.8.1",
     "xss": "^1.0.15"
   },
   "devDependencies": {

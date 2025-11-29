@@ -2,11 +2,12 @@ import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import { startChat } from '../services/chat'; // ✅ ADD THIS IMPORT
 import { getUserProfile, followUser, admireUser, blockUser, unblockUser } from '../services/user';
-import { 
-  User, 
-  Heart, 
-  MessageCircle, 
+import {
+  User,
+  Heart,
+  MessageCircle,
   Shield,
   Eye,
   MoreVertical,
@@ -37,7 +38,7 @@ const OtherUserProfile = () => {
   // Enhanced check if user is blocked - using useCallback to fix ESLint warnings
   const checkIfBlocked = useCallback(() => {
     if (!currentUser || !currentUser.blockedUsers) return false;
-    return currentUser.blockedUsers.some(blockedUser => 
+    return currentUser.blockedUsers.some(blockedUser =>
       (typeof blockedUser === 'object' ? blockedUser._id : blockedUser).toString() === userId
     );
   }, [currentUser, userId]);
@@ -55,12 +56,12 @@ const OtherUserProfile = () => {
     const fetchUserProfile = async () => {
       setIsLoading(true);
       setError('');
-      
+
       try {
         // Always check current block status from context first
         const blocked = checkIfBlocked();
         setIsBlocked(blocked);
-        
+
         if (blocked) {
           // If blocked, we still want to get basic user info for display
           try {
@@ -78,7 +79,7 @@ const OtherUserProfile = () => {
 
         // Normal profile fetch for unblocked users
         const response = await getUserProfile(userId);
-        
+
         if (response.data.success) {
           const userData = response.data.data;
           setUserProfile(userData);
@@ -111,20 +112,20 @@ const OtherUserProfile = () => {
     setIsFollowLoading(true);
     try {
       const response = await followUser(userId);
-      
+
       if (response.data.success) {
         setIsFollowing(response.data.isFollowing);
-        
+
         setUserProfile(prev => ({
           ...prev,
           followersCount: response.data.followersCount || prev.followersCount
         }));
 
         if (currentUser && updateUserData) {
-          const updatedFollowing = response.data.isFollowing 
+          const updatedFollowing = response.data.isFollowing
             ? [...(currentUser.following || []), userId]
             : currentUser.following.filter(id => id !== userId);
-          
+
           updateUserData({
             ...currentUser,
             following: updatedFollowing
@@ -151,11 +152,11 @@ const OtherUserProfile = () => {
       console.log('🚫 Blocking user:', userId);
       const response = await blockUser(userId);
       console.log('✅ Block response:', response.data);
-      
+
       if (response.data.success) {
         setShowOptions(false);
         setShowBlockConfirm(false);
-        
+
         // Update current user's blocked list
         if (currentUser && updateUserData) {
           const updatedBlockedUsers = [...(currentUser.blockedUsers || []), userId];
@@ -164,13 +165,13 @@ const OtherUserProfile = () => {
             blockedUsers: updatedBlockedUsers
           });
         }
-        
+
         setIsBlocked(true);
-        
+
         // Show success message without alert window
         setShowSuccessMessage(`${userProfile?.name || 'User'} has been blocked`);
         setTimeout(() => setShowSuccessMessage(''), 3000);
-        
+
       } else {
         throw new Error(response.data.message || 'Failed to block user');
       }
@@ -189,27 +190,27 @@ const OtherUserProfile = () => {
     setIsBlockLoading(true);
     try {
       console.log('🔓 Attempting to unblock user:', userId);
-      
+
       const response = await unblockUser(userId);
       console.log('✅ Unblock response:', response.data);
-      
+
       if (response.data.success) {
         // Update current user's blocked list
         if (currentUser && updateUserData) {
-          const updatedBlockedUsers = (currentUser.blockedUsers || []).filter(id => 
+          const updatedBlockedUsers = (currentUser.blockedUsers || []).filter(id =>
             id.toString() !== userId.toString()
           );
-          
+
           console.log('🔄 Updating user data with blockedUsers:', updatedBlockedUsers);
-          
+
           updateUserData({
             ...currentUser,
             blockedUsers: updatedBlockedUsers
           });
         }
-        
+
         setIsBlocked(false);
-        
+
         // Refresh the profile to get full user data
         try {
           console.log('🔄 Refreshing user profile after unblock...');
@@ -225,7 +226,7 @@ const OtherUserProfile = () => {
           console.error('❌ Error refreshing profile after unblock:', profileError);
           // Even if profile refresh fails, we can still show the unblocked view
         }
-        
+
         // Show success message
         setShowSuccessMessage(`${userProfile?.name || 'User'} has been unblocked`);
         setTimeout(() => setShowSuccessMessage(''), 3000);
@@ -236,9 +237,9 @@ const OtherUserProfile = () => {
       console.error('❌ Error unblocking user:', error);
       console.error('❌ Error response:', error.response?.data);
       console.error('❌ Error status:', error.response?.status);
-      
+
       let errorMessage = 'Failed to unblock user. Please try again.';
-      
+
       if (error.response?.status === 404) {
         errorMessage = 'Unblock endpoint not found. Please check server configuration.';
       } else if (error.response?.data?.message) {
@@ -246,7 +247,7 @@ const OtherUserProfile = () => {
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       alert(errorMessage);
     } finally {
       setIsBlockLoading(false);
@@ -272,10 +273,10 @@ const OtherUserProfile = () => {
     setIsAdmireLoading(true);
     try {
       const response = await admireUser(userId);
-      
+
       if (response.data.success) {
         setHasAdmired(response.data.hasAdmired);
-        
+
         setUserProfile(prev => ({
           ...prev,
           admirersCount: response.data.admirersCount || prev.admirersCount
@@ -294,9 +295,37 @@ const OtherUserProfile = () => {
     }
   };
 
-  // Handle message
-  const handleMessage = () => {
-    navigate(`/chat/${userId}`);
+
+  // Handle message 
+  // Updated handleMessage function in OtherUserProfile.jsx
+  const handleMessage = async () => {
+    try {
+      console.log('💬 Starting chat with user:', userId);
+
+      const response = await startChat(userId);
+
+      if (response.data.success) {
+        console.log('✅ Chat started successfully:', response.data.data._id);
+        // Use the new chat route
+        navigate(`/chat/new/${userId}`);
+      } else {
+        throw new Error(response.data.message || 'Failed to start chat');
+      }
+    } catch (error) {
+      console.error('❌ Start chat error:', error);
+
+      let errorMessage = 'Failed to start chat';
+
+      if (error.response?.status === 403) {
+        errorMessage = 'This user does not allow messages from non-followers';
+      } else if (error.response?.status === 404) {
+        errorMessage = 'User not found';
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+
+      alert(errorMessage);
+    }
   };
 
   // Handle view posts
@@ -377,9 +406,9 @@ const OtherUserProfile = () => {
             className="bg-white rounded-xl sm:rounded-2xl shadow-lg sm:shadow-xl overflow-hidden mb-4 sm:mb-6"
           >
             {/* Cover Photo - Dimmed */}
-            <div 
+            <div
               className="h-48 sm:h-64 bg-gradient-to-r from-purple-500 to-pink-500 relative opacity-50"
-              style={{ 
+              style={{
                 backgroundImage: userProfile?.coverImage ? `url(${userProfile.coverImage})` : 'none',
                 backgroundSize: 'cover',
                 backgroundPosition: 'center'
@@ -393,8 +422,8 @@ const OtherUserProfile = () => {
                 <div className="relative mb-6">
                   <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-full flex items-center justify-center shadow-2xl border-4 border-white bg-gradient-to-r from-blue-400 to-purple-500 overflow-hidden opacity-50">
                     {userProfile?.avatar ? (
-                      <img 
-                        src={userProfile.avatar} 
+                      <img
+                        src={userProfile.avatar}
                         alt={userProfile.name}
                         className="w-full h-full rounded-full object-cover"
                       />
@@ -415,7 +444,7 @@ const OtherUserProfile = () => {
                   <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
                     {userProfile?.name || 'User Name'}
                   </h1>
-                  
+
                   <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
                     <div className="flex flex-col items-center space-y-3">
                       <UserX size={48} className="text-red-500" />
@@ -432,9 +461,8 @@ const OtherUserProfile = () => {
                     whileTap={{ scale: 0.95 }}
                     onClick={handleUnblockUser}
                     disabled={isBlockLoading}
-                    className={`px-6 py-3 bg-blue-900 text-white rounded-lg hover:bg-red-700 transition font-medium shadow-lg ${
-                      isBlockLoading ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
+                    className={`px-6 py-3 bg-blue-900 text-white rounded-lg hover:bg-red-700 transition font-medium shadow-lg ${isBlockLoading ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
                   >
                     {isBlockLoading ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mx-auto"></div>
@@ -497,7 +525,7 @@ const OtherUserProfile = () => {
                   <X size={20} className="text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="space-y-2">
                 <button
                   onClick={() => {
@@ -509,7 +537,7 @@ const OtherUserProfile = () => {
                   <Eye size={18} />
                   View Posts
                 </button>
-                
+
                 <button
                   onClick={confirmBlockUser}
                   className="w-full text-left px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-3 transition"
@@ -548,7 +576,7 @@ const OtherUserProfile = () => {
                 <p className="text-gray-600 mb-6">
                   Are you sure you want to block this user? You won't be able to see their profile or posts anymore.
                 </p>
-                
+
                 <div className="flex gap-3 justify-center">
                   <button
                     onClick={cancelBlockUser}
@@ -559,9 +587,8 @@ const OtherUserProfile = () => {
                   <button
                     onClick={handleBlockUser}
                     disabled={isBlockLoading}
-                    className={`px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium ${
-                      isBlockLoading ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
+                    className={`px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium ${isBlockLoading ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
                   >
                     {isBlockLoading ? 'Blocking...' : 'Block User'}
                   </button>
@@ -580,9 +607,9 @@ const OtherUserProfile = () => {
           className="bg-white rounded-xl sm:rounded-2xl shadow-lg sm:shadow-xl overflow-hidden mb-4 sm:mb-6 relative"
         >
           {/* Cover Photo */}
-          <div 
+          <div
             className="h-48 sm:h-64 bg-gradient-to-r from-purple-500 to-pink-500 relative"
-            style={{ 
+            style={{
               backgroundImage: userProfile.coverImage ? `url(${userProfile.coverImage})` : 'none',
               backgroundSize: 'cover',
               backgroundPosition: 'center'
@@ -596,8 +623,8 @@ const OtherUserProfile = () => {
               <div className="relative flex-shrink-0 -mt-28 sm:-mt-32">
                 <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-full flex items-center justify-center shadow-2xl border-4 border-white bg-gradient-to-r from-blue-400 to-purple-500 overflow-hidden">
                   {userProfile.avatar ? (
-                    <img 
-                      src={userProfile.avatar} 
+                    <img
+                      src={userProfile.avatar}
                       alt={userProfile.name}
                       className="w-full h-full rounded-full object-cover"
                     />
@@ -639,11 +666,10 @@ const OtherUserProfile = () => {
               <button
                 onClick={handleFollow}
                 disabled={isFollowLoading}
-                className={`px-4 py-2 rounded-lg transition font-medium ${
-                  isFollowing 
-                    ? 'bg-gray-500 text-white hover:bg-gray-600' 
+                className={`px-4 py-2 rounded-lg transition font-medium ${isFollowing
+                    ? 'bg-gray-500 text-white hover:bg-gray-600'
                     : 'bg-red-700 text-white hover:bg-blue-900'
-                } ${isFollowLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  } ${isFollowLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {isFollowLoading ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -656,11 +682,10 @@ const OtherUserProfile = () => {
               <button
                 onClick={handleAdmire}
                 disabled={isAdmireLoading}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition font-medium ${
-                  hasAdmired 
-                    ? 'bg-red-600 text-white hover:bg-red-700' 
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition font-medium ${hasAdmired
+                    ? 'bg-red-600 text-white hover:bg-red-700'
                     : 'bg-red-700 text-white hover:bg-blue-900'
-                } ${isAdmireLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  } ${isAdmireLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {isAdmireLoading ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -705,23 +730,23 @@ const OtherUserProfile = () => {
               <Heart className="text-red-500" size={18} fill="currentColor" />
               Social Stats
             </h2>
-            
+
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <div className="text-center p-3 sm:p-4 bg-red-50 rounded-lg sm:rounded-xl">
                 <p className="text-xl sm:text-2xl font-bold text-red-600">{userProfile.admirersCount || 0}</p>
                 <p className="text-xs sm:text-sm text-gray-600">Admirers</p>
               </div>
-              
+
               <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
                 <p className="text-xl sm:text-2xl font-bold text-blue-600">{userProfile.following?.length || 0}</p>
                 <p className="text-xs sm:text-sm text-gray-600">Following</p>
               </div>
-              
+
               <div className="text-center p-3 sm:p-4 bg-green-50 rounded-lg sm:rounded-xl">
                 <p className="text-xl sm:text-2xl font-bold text-green-600">{userProfile.followers?.length || 0}</p>
                 <p className="text-xs sm:text-sm text-gray-600">Followers</p>
               </div>
-              
+
               <div className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg sm:rounded-xl">
                 <p className="text-xl sm:text-2xl font-bold text-purple-600">{userProfile.postsCount || 0}</p>
                 <p className="text-xs sm:text-sm text-gray-600">Posts</p>
@@ -740,7 +765,7 @@ const OtherUserProfile = () => {
               <GraduationCap className="text-blue-500" size={18} />
               Academic Information
             </h2>
-            
+
             <div className="space-y-3 sm:space-y-4">
               <div>
                 <p className="text-xs sm:text-sm text-gray-500 mb-1">Role</p>
@@ -755,7 +780,7 @@ const OtherUserProfile = () => {
                       <p className="text-base sm:text-lg font-semibold text-gray-800">{userProfile.semester}</p>
                     </div>
                   )}
-                  
+
                   {userProfile.batch && (
                     <div>
                       <p className="text-xs sm:text-sm text-gray-500 mb-1">Batch</p>
@@ -788,7 +813,7 @@ const OtherUserProfile = () => {
             <User className="text-purple-500" size={18} />
             Personal Information
           </h2>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             <div>
               <p className="text-xs sm:text-sm text-gray-500 mb-1">Member Since</p>
@@ -796,7 +821,7 @@ const OtherUserProfile = () => {
                 {new Date(userProfile.createdAt || Date.now()).toLocaleDateString()}
               </p>
             </div>
-            
+
             {userProfile.lastSeen && (
               <div>
                 <p className="text-xs sm:text-sm text-gray-500 mb-1">Last Active</p>
@@ -820,7 +845,7 @@ const OtherUserProfile = () => {
               <Users className="text-green-500" size={18} />
               Recent Followers
             </h2>
-            
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {userProfile.followers.slice(0, 4).map((follower) => (
                 <div
@@ -830,8 +855,8 @@ const OtherUserProfile = () => {
                 >
                   <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white mb-2 overflow-hidden border-2 border-white shadow-lg">
                     {follower.avatar ? (
-                      <img 
-                        src={follower.avatar} 
+                      <img
+                        src={follower.avatar}
                         alt={follower.name}
                         className="w-full h-full rounded-full object-cover"
                       />

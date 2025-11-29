@@ -1,4 +1,3 @@
-// backend/socket/socket.js
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
@@ -12,8 +11,8 @@ const setupSocket = (server) => {
     }
   });
 
-  const onlineUsers = new Map(); // socketId -> userId
-  const userSockets = new Map(); // userId -> socketId
+  const onlineUsers = new Map();
+  const userSockets = new Map();
 
   // Authentication middleware for Socket.io
   io.use(async (socket, next) => {
@@ -24,7 +23,7 @@ const setupSocket = (server) => {
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const user = await User.findById(decoded.id).select("id name username avatar privacySettings");
+      const user = await User.findById(decoded.id).select("id name username avatar privacySettings onlineStatus");
       
       if (!user) {
         return next(new Error("User not found"));
@@ -34,6 +33,7 @@ const setupSocket = (server) => {
       socket.user = user;
       next();
     } catch (error) {
+      console.error("Socket auth error:", error);
       next(new Error("Authentication error"));
     }
   });
