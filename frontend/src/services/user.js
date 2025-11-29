@@ -1,13 +1,28 @@
-// frontend/src/services/user.js
-
 import API from "./api";
 
-// Search users - PROPER ERROR HANDLING
+// Update profile with image upload
+// Change to use the new endpoint
+export const updateProfile = (formData) => API.put('/auth/profile-with-images', formData, {
+  headers: {
+    'Content-Type': 'multipart/form-data'
+  }
+});
+
+// Upload image only
+export const uploadImage = (formData) => API.post('/auth/upload-image', formData, {
+  headers: {
+    'Content-Type': 'multipart/form-data'
+  }
+});
+
+
+// ML-based suggested users for onboarding
+export const getSuggestedUsers = () => API.get("/suggestions/strict");
+
+// Other functions remain same...
 export const searchUsers = async (query) => {
   try {
     const response = await API.get(`/users/search?q=${encodeURIComponent(query)}`);
-    
-    // Check if response has proper structure
     if (response.data && response.data.success) {
       return response;
     } else {
@@ -19,19 +34,13 @@ export const searchUsers = async (query) => {
   }
 };
 
-// Get user profile by ID
+// Block user - FIXED ENDPOINT
+export const blockUser = (userId) => API.post(`/users/block/${userId}`);
+
+// FIX: Change unblockUser from PUT to POST to match backend
+export const unblockUser = (userId) => API.post(`http://localhost:5000/api/users/unblock/${userId}`);
+// services/user.js
 export const getUserProfile = (userId) => API.get(`/users/profile/${userId}`);
-
-// Follow/Unfollow user
-export const followUser = (userId) => API.post(`/users/${userId}/follow`);
-
-// Admire user
-export const admireUser = (userId) => API.post(`/users/${userId}/admire`);
-
-// Block user
-export const blockUser = (userId) => API.post(`/users/${userId}/block`);
-// Get suggested users for onboarding
-export const getSuggestedUsers = () => API.get("/users/suggested-users");
-
+export const followUser = (userId) => API.post(`/users/follow/${userId}`);
+export const admireUser = (userId) => API.post(`/users/admire/${userId}`);
 export const debugAllUsers = () => API.get('/users/debug/all-users');
-export const debugProfileCheck = () => API.get('/users/debug/profile-check');
