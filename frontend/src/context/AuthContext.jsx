@@ -16,14 +16,25 @@ export const AuthProvider = ({ children }) => {
   }, [userToken]);
 
   const login = (token, user = null) => {
-    localStorage.setItem("trendzz_token", token);
-    if (user) {
-      localStorage.setItem("trendzz_user", JSON.stringify(user));
-      setUserData(user);
-    }
-    setUserToken(token);
-    setIsAuthenticated(true);
-  };
+  localStorage.setItem("trendzz_token", token);
+  if (user) {
+    // Ensure privacySettings exists in user data
+    const userWithPrivacy = {
+      ...user,
+      privacySettings: user.privacySettings || {
+        showEmail: true,
+        showFollowers: true,
+        showFollowing: true,
+        allowMessages: true,
+        showOnlineStatus: true
+      }
+    };
+    localStorage.setItem("trendzz_user", JSON.stringify(userWithPrivacy));
+    setUserData(userWithPrivacy);
+  }
+  setUserToken(token);
+  setIsAuthenticated(true);
+};
 
   const logout = () => {
     // Clear all storage
@@ -100,3 +111,5 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
+
+

@@ -1,8 +1,31 @@
 import express from "express";
 import User from "../models/User.js";
 import requireAuth from "../middleware/authMiddleware.js";
+import { 
+  updatePrivacySettings, 
+  debugPrivacySettings, 
+  updateUserPrivacy,
+  getFollowingList,    // ADDED
+  getFollowersList     // ADDED
+} from "../controllers/userController.js";
 
 const router = express.Router();
+// Add these routes
+router.get('/following/:userId', requireAuth, getFollowingList);
+router.get('/followers/:userId', requireAuth, getFollowersList);
+router.put('/update-privacy', requireAuth, updatePrivacySettings);
+router.get('/debug-privacy', requireAuth, debugPrivacySettings);
+// Alternative privacy route
+router.put('/privacy', requireAuth, updateUserPrivacy);
+
+// Test route to check if privacy endpoint works
+router.get('/test-privacy', requireAuth, (req, res) => {
+  res.json({ 
+    success: true, 
+    message: "Privacy endpoint is working!",
+    user: req.user.id 
+  });
+});
 
 // Search users
 router.get("/search", requireAuth, async (req, res) => {

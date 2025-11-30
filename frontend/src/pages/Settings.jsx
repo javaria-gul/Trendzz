@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react'; // ADD useEffect here
 import { motion } from 'framer-motion';
 import { AuthContext } from '../context/AuthContext';
 import { 
@@ -10,14 +10,15 @@ import {
   EyeOff, 
   LogOut, 
   Shield,
-  Check,
   X,
   Save,
   Edit3,
-  ArrowLeft, // NEW IMPORT
-  XCircle // NEW IMPORT
+  ArrowLeft,
+  XCircle
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom'; // NEW IMPORT
+import { useNavigate } from 'react-router-dom';
+import { updatePrivacySettings } from '../services/user';
+import API from '../services/api'; // ADD THIS IMPORT
 
 const Settings = () => {
   const { userData, logout, updateUserData } = useContext(AuthContext);
@@ -109,6 +110,7 @@ const Settings = () => {
 // Rest of the components (AccountSettings, PrivacySettings, etc.) remain exactly the same...
 
 // Account Settings Component
+// Account Settings Component
 const AccountSettings = ({ userData, updateUserData }) => {
   const [isEditingEmail, setIsEditingEmail] = useState(false);
   const [email, setEmail] = useState(userData?.email || '');
@@ -194,18 +196,13 @@ const AccountSettings = ({ userData, updateUserData }) => {
         )}
       </div>
 
-      {/* Account Info */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Account Info - REMOVED USER ID, ONLY KEEP MEMBER SINCE */}
+      <div className="grid grid-cols-1 gap-6">
         <div className="bg-gray-50 rounded-xl p-6">
           <h3 className="font-semibold text-gray-800 mb-2">Member Since</h3>
           <p className="text-gray-600">
             {userData?.createdAt ? new Date(userData.createdAt).toLocaleDateString() : 'N/A'}
           </p>
-        </div>
-        
-        <div className="bg-gray-50 rounded-xl p-6">
-          <h3 className="font-semibold text-gray-800 mb-2">User ID</h3>
-          <p className="text-gray-600 font-mono text-sm">{userData?._id || 'N/A'}</p>
         </div>
       </div>
     </div>
@@ -213,81 +210,132 @@ const AccountSettings = ({ userData, updateUserData }) => {
 };
 
 // Privacy Settings Component
+// Privacy Settings Component - WITH BACKEND SAVING
 const PrivacySettings = ({ userData, updateUserData }) => {
   const [privacySettings, setPrivacySettings] = useState({
-    profilePublic: true,
-    showEmail: false,
-    showFollowers: true,
-    showFollowing: true,
-    allowMessages: true,
-    showOnlineStatus: true
+    showEmail: userData?.privacySettings?.showEmail || false,
+    showFollowers: userData?.privacySettings?.showFollowers !== undefined ? userData.privacySettings.showFollowers : true,
+    showFollowing: userData?.privacySettings?.showFollowing !== undefined ? userData.privacySettings.showFollowing : true,
+    allowMessages: userData?.privacySettings?.allowMessages !== undefined ? userData.privacySettings.allowMessages : true,
+    showOnlineStatus: userData?.privacySettings?.showOnlineStatus !== undefined ? userData.privacySettings.showOnlineStatus : true
   });
 
-  const handlePrivacyChange = (setting, value) => {
-    const newSettings = { ...privacySettings, [setting]: value };
-    setPrivacySettings(newSettings);
-    // TODO: Save to backend
-    updateUserData({ privacySettings: newSettings });
-  };
+  const [isLoading, setIsLoading] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('');
+
+  // Load user settings when component mounts
+  useEffect(() => {
+    if (userData?.privacySettings) {
+      console.log("📥 Loading user privacy settings:", userData.privacySettings);
+      setPrivacySettings(userData.privacySettings);
+    }
+  }, [userData]);
+
+const handlePrivacyChange = async (setting, value) => {
+  console.log(`🔄 Changing ${setting} to ${value}`);
+  
+  // Immediately update UI
+  const newSettings = { ...privacySettings, [setting]: value };
+  setPrivacySettings(newSettings);
+  setSaveStatus('saving...');
+  
+  setIsLoading(true);
+  try {
+    console.log("📡 Sending to backend:", newSettings);
+    
+    // Use the imported function directly
+    const response = await updatePrivacySettings(newSettings);
+    
+    console.log("✅ Backend response:", response);
+    
+    if (response.data.success) {
+      // Update global user data
+      updateUserData({ 
+        ...userData, 
+        privacySettings: newSettings 
+      });
+      setSaveStatus('Saved successfully!');
+      console.log('✅ Privacy settings saved successfully');
+      
+      setTimeout(() => setSaveStatus(''), 3000);
+    } else {
+      throw new Error(response.data.message || 'Failed to save');
+    }
+  } catch (error) {
+    console.error('❌ Error saving privacy settings:', error);
+    setSaveStatus('Error: ' + (error.response?.data?.message || error.message));
+    // Revert on error
+    setPrivacySettings(prev => ({ ...prev, [setting]: !value }));
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const privacyOptions = [
-    {
-      id: 'profilePublic',
-      label: 'Public Profile',
-      description: 'Anyone can view your profile'
-    },
-    {
-      id: 'showEmail',
-      label: 'Show Email',
-      description: 'Display your email on profile'
-    },
-    {
-      id: 'showFollowers',
-      label: 'Show Followers',
-      description: 'Display your followers list'
-    },
-    {
-      id: 'showFollowing',
-      label: 'Show Following',
-      description: 'Display who you follow'
-    },
-    {
-      id: 'allowMessages',
-      label: 'Allow Messages',
-      description: 'Allow users to send you messages'
-    },
-    {
-      id: 'showOnlineStatus',
-      label: 'Show Online Status',
-      description: 'Display when you are online'
-    }
+    { id: 'showEmail', label: 'Show Email', description: 'Display your email on profile' },
+    { id: 'showFollowers', label: 'Show Followers', description: 'Display your followers list' },
+    { id: 'showFollowing', label: 'Show Following', description: 'Display who you follow' },
+    { id: 'allowMessages', label: 'Allow Messages', description: 'Allow users to send you messages' },
+    { id: 'showOnlineStatus', label: 'Show Online Status', description: 'Display when you are online' }
   ];
 
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-bold text-gray-800 mb-6">Privacy Settings</h2>
       
+      {/* Save Status */}
+      {saveStatus && (
+        <div className={`p-4 rounded-lg ${
+          saveStatus.includes('Error') || saveStatus.includes('Failed') 
+            ? 'bg-red-50 border border-red-200 text-red-800' 
+            : 'bg-green-50 border border-green-200 text-green-800'
+        }`}>
+          <p className="font-medium">{saveStatus}</p>
+        </div>
+      )}
+      
       <div className="space-y-4">
         {privacyOptions.map((option) => (
-          <div key={option.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+          <div 
+            key={option.id} 
+            className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors"
+            style={{ cursor: isLoading ? 'not-allowed' : 'pointer' }}
+            onClick={() => {
+              if (!isLoading) {
+                handlePrivacyChange(option.id, !privacySettings[option.id]);
+              }
+            }}
+          >
             <div className="flex-1">
               <h3 className="font-semibold text-gray-800">{option.label}</h3>
               <p className="text-sm text-gray-600 mt-1">{option.description}</p>
+              {isLoading && (
+                <p className="text-xs text-blue-600 mt-1">Saving...</p>
+              )}
             </div>
-            <button
-              onClick={() => handlePrivacyChange(option.id, !privacySettings[option.id])}
+            <div 
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                 privacySettings[option.id] ? 'bg-green-500' : 'bg-gray-300'
-              }`}
+              } ${isLoading ? 'opacity-50' : ''}`}
             >
               <span
                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                   privacySettings[option.id] ? 'translate-x-6' : 'translate-x-1'
                 }`}
               />
-            </button>
+            </div>
           </div>
         ))}
+      </div>
+
+      {/* Debug Info */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <p className="text-blue-800 text-sm">
+          <strong>Current State:</strong> {JSON.stringify(privacySettings)}
+        </p>
+        <p className="text-blue-800 text-sm mt-1">
+          <strong>User Data State:</strong> {JSON.stringify(userData?.privacySettings)}
+        </p>
       </div>
 
       {/* Blocked Users Section */}
@@ -494,6 +542,4 @@ const AppearanceSettings = ({ darkMode, setDarkMode }) => {
 };
 
 export default Settings;
-
-
 

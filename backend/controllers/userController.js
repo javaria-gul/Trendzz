@@ -274,7 +274,7 @@ export const getOtherUserProfile = async (req, res) => {
     }
 
     const user = await User.findById(userId)
-      .select('-password -email -emailVerificationToken -emailVerificationExpires')
+      .select('-password -emailVerificationToken -emailVerificationExpires') // REMOVED -email
       .populate('followers', 'name username avatar')
       .populate('following', 'name username avatar');
 
@@ -287,9 +287,7 @@ export const getOtherUserProfile = async (req, res) => {
 
     // Check if current user is following this user
     const isFollowing = currentUser.following && currentUser.following.includes(userId);
-    
-    // Check if current user has admired this user (you might need to implement this logic)
-    const hasAdmired = false; // Implement admiration logic if needed
+    const hasAdmired = false;
 
     res.json({
       success: true,
@@ -605,6 +603,152 @@ export const debugProfileCheck = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Debug failed"
+    });
+  }
+};
+
+// Update privacy settings
+export const updatePrivacySettings = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { privacySettings } = req.body;
+
+    console.log("🛡️ Updating privacy settings for user:", userId);
+    console.log("📋 New privacy settings:", privacySettings);
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { privacySettings },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Privacy settings updated successfully",
+      user: updatedUser
+    });
+
+  } catch (error) {
+    console.error("Update privacy settings error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while updating privacy settings"
+    });
+  }
+};
+// Alternative endpoint for privacy settings
+export const updateUserPrivacy = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { privacySettings } = req.body;
+
+    console.log("🛡️ UPDATING PRIVACY - User:", userId);
+    console.log("📋 Privacy settings:", privacySettings);
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { privacySettings },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    res.json({
+      success: true,
+      message: "Privacy settings updated",
+      user: updatedUser
+    });
+
+  } catch (error) {
+    console.error("Privacy update error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update privacy settings"
+    });
+  }
+};
+// Debug: Check user's current privacy settings
+export const debugPrivacySettings = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('privacySettings name email');
+    
+    res.json({
+      success: true,
+      user: {
+        name: user.name,
+        email: user.email,
+        privacySettings: user.privacySettings
+      }
+    });
+  } catch (error) {
+    console.error("Debug privacy error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Debug failed"
+    });
+  }
+};
+// Get detailed following list
+export const getFollowingList = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const user = await User.findById(userId)
+      .populate('following', 'name username avatar bio role semester batch')
+      .select('following');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      following: user.following || []
+    });
+
+  } catch (error) {
+    console.error("Get following list error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching following list"
+    });
+  }
+};
+
+// Get detailed followers list
+export const getFollowersList = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const user = await User.findById(userId)
+      .populate('followers', 'name username avatar bio role semester batch')
+      .select('followers');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      followers: user.followers || []
+    });
+
+  } catch (error) {
+    console.error("Get followers list error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching followers list"
     });
   }
 };

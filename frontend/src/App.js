@@ -13,7 +13,6 @@ import ChatLayout from "./components/ChatLayout";
 import ChatWindow from "./components/ChatWindow";
 import ChatEmptyState from "./components/ChatEmptyState";
 
-
 // Simple Protected Route
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated } = useContext(AuthContext);
@@ -49,7 +48,7 @@ function App() {
             </ProtectedRoute>
           } />
 
-          {/* ✅ CORRECTED: HomeLayout with nested routes */}
+          {/* ✅ CORRECTED: HomeLayout with ALL pages that need sidebars */}
           <Route path="/" element={
             <ProtectedRoute>
               <OnboardingCheck>
@@ -57,38 +56,21 @@ function App() {
               </OnboardingCheck>
             </ProtectedRoute>
           }>
-            {/* Nested routes - these will show in HomeLayout's main area */}
+            {/* Nested routes - these will show in HomeLayout's main area WITH SIDEBARS */}
             <Route index element={<Feed />} /> {/* Default feed */}
             <Route path="profile" element={<Profile />} /> {/* Profile page */}
             <Route path="create-post" element={<div>Create Post Page</div>} /> {/* Create post page */}
+            <Route path="user/:userId" element={<OtherUserProfile />} /> {/* ✅ MOVED INSIDE - will have sidebars */}
+            <Route path="search" element={<Search />} /> {/* ✅ MOVED INSIDE - will have sidebars */}
+            <Route path="settings" element={<Settings />} /> {/* ✅ MOVED INSIDE - will have sidebars */}
           </Route>
-          <Route path="/settings" element={
-            <ProtectedRoute>
-              <OnboardingCheck>
-                <Settings />
-              </OnboardingCheck>
-            </ProtectedRoute>
-          } />
 
-          <Route path="/user/:userId" element={
+          {/* Routes that DON'T need sidebars */}
+          <Route path="/chat" element={
             <ProtectedRoute>
-              <OtherUserProfile />
+              <ChatLayout />
             </ProtectedRoute>
-          } />
-
-          <Route path="/search" element={
-            <ProtectedRoute>
-              <Search />
-            </ProtectedRoute>
-          } />
-
-          <Route path="/user/:userId" element={
-            <ProtectedRoute>
-              <OtherUserProfile />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/chat" element={<ChatLayout />}>
+          }>
             <Route index element={<ChatEmptyState />} />
             <Route path=":chatId" element={<ChatWindow />} />
             <Route path="new/:userId" element={<ChatWindow />} />
