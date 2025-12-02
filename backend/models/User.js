@@ -60,13 +60,12 @@ lastSeen: { type: Date, default: Date.now },
 
   // Privacy settings
   privacySettings: {
-    profilePublic: { type: Boolean, default: true },
-    showEmail: { type: Boolean, default: false },
+    showEmail: { type: Boolean, default: true },
     showFollowers: { type: Boolean, default: true },
     showFollowing: { type: Boolean, default: true },
     allowMessages: { type: Boolean, default: true },
     showOnlineStatus: { type: Boolean, default: true }
-  }
+  },
 
 }, { timestamps: true });
 

@@ -259,10 +259,13 @@ export const loginUser = async (req, res) => {
 };
 
 // Get other user's profile
+// Get other user's profile - UPDATED TO INCLUDE PRIVACY SETTINGS
 export const getOtherUserProfile = async (req, res) => {
   try {
     const { userId } = req.params;
     const currentUserId = req.user.id;
+
+    console.log("🔍 Fetching profile for user:", userId, "by:", currentUserId);
 
     // Check if current user has blocked this user
     const currentUser = await User.findById(currentUserId);
@@ -273,8 +276,9 @@ export const getOtherUserProfile = async (req, res) => {
       });
     }
 
+    // Get user WITH privacySettings
     const user = await User.findById(userId)
-      .select('-password -emailVerificationToken -emailVerificationExpires') // REMOVED -email
+      .select('-password -emailVerificationToken -emailVerificationExpires')
       .populate('followers', 'name username avatar')
       .populate('following', 'name username avatar');
 
@@ -285,17 +289,57 @@ export const getOtherUserProfile = async (req, res) => {
       });
     }
 
+    // Ensure privacySettings exist with default values
+    const userWithPrivacy = {
+      ...user.toObject(),
+      privacySettings: user.privacySettings || {
+        showEmail: true,
+        showFollowers: true,
+        showFollowing: true,
+        allowMessages: true,
+        showOnlineStatus: true
+      }
+    };
+
     // Check if current user is following this user
     const isFollowing = currentUser.following && currentUser.following.includes(userId);
     const hasAdmired = false;
 
+    // Prepare response data
+    const responseData = {
+      _id: userWithPrivacy._id,
+      name: userWithPrivacy.name,
+      username: userWithPrivacy.username,
+      email: userWithPrivacy.privacySettings?.showEmail ? userWithPrivacy.email : undefined,
+      bio: userWithPrivacy.bio || '',
+      avatar: userWithPrivacy.avatar,
+      coverImage: userWithPrivacy.coverImage,
+      role: userWithPrivacy.role,
+      semester: userWithPrivacy.semester,
+      batch: userWithPrivacy.batch,
+      subjects: userWithPrivacy.subjects || [],
+      followers: userWithPrivacy.privacySettings?.showFollowers ? userWithPrivacy.followers : [],
+      following: userWithPrivacy.privacySettings?.showFollowing ? userWithPrivacy.following : [],
+      admirers: userWithPrivacy.admirers || [],
+      admirersCount: userWithPrivacy.admirersCount || 0,
+      privacySettings: userWithPrivacy.privacySettings,
+      createdAt: userWithPrivacy.createdAt,
+      lastSeen: userWithPrivacy.lastSeen,
+      isFollowing,
+      hasAdmired,
+      followersCount: userWithPrivacy.followers?.length || 0,
+      followingCount: userWithPrivacy.following?.length || 0,
+      postsCount: userWithPrivacy.postsCount || 0
+    };
+
+    console.log("📤 Sending profile data with privacy settings:", {
+      name: responseData.name,
+      allowMessages: responseData.privacySettings?.allowMessages
+    });
+
     res.json({
       success: true,
-      data: {
-        ...user.toObject(),
-        isFollowing,
-        hasAdmired
-      }
+      data: responseData
     });
 
   } catch (error) {
