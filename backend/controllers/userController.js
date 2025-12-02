@@ -466,7 +466,7 @@ export const getUserProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
       .select('-password -emailVerificationToken -emailVerificationExpires')
-      .populate('blockedUsers', 'name username avatar'); // Populate blocked users
+      .populate('blockedUsers', 'name username avatar role'); // Populate with more fields
 
     if (!user) {
       return res.status(404).json({ 

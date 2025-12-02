@@ -1,6 +1,7 @@
 import React, { useState, useContext, useEffect } from 'react'; // ADD useEffect here
 import { motion } from 'framer-motion';
 import { AuthContext } from '../context/AuthContext';
+import { updatePrivacySettings, unblockUser } from '../services/user';
 import { 
   Lock, 
   Moon, 
@@ -17,7 +18,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { updatePrivacySettings } from '../services/user';
+
 import API from '../services/api'; // ADD THIS IMPORT
 
 const Settings = () => {
@@ -115,6 +116,7 @@ const AccountSettings = ({ userData, updateUserData }) => {
   const [isEditingEmail, setIsEditingEmail] = useState(false);
   const [email, setEmail] = useState(userData?.email || '');
   const [isLoading, setIsLoading] = useState(false);
+  const [saveStatus, setSaveStatus] = useState(''); // ADD THIS LINE
 
   const handleEmailUpdate = async () => {
     if (!email || email === userData.email) {
@@ -133,6 +135,55 @@ const AccountSettings = ({ userData, updateUserData }) => {
       setIsLoading(false);
     }
   };
+
+
+  // Handle unblock user from settings
+const handleUnblockUser = async (userToUnblock) => {
+  const userIdToUnblock = typeof userToUnblock === 'object' ? userToUnblock._id : userToUnblock;
+  
+  if (!userIdToUnblock) {
+    alert('Invalid user');
+    return;
+  }
+
+  const confirmUnblock = window.confirm(
+    `Are you sure you want to unblock ${
+      typeof userToUnblock === 'object' ? userToUnblock.name : 'this user'
+    }?`
+  );
+
+  if (!confirmUnblock) return;
+
+  setIsLoading(true);
+  try {
+    // Call unblock API
+    const response = await unblockUser(userIdToUnblock);
+    
+    if (response.data.success) {
+      // Update blocked users list
+      const updatedBlockedUsers = (userData.blockedUsers || []).filter(user => {
+        const userId = typeof user === 'object' ? user._id : user;
+        return userId !== userIdToUnblock;
+      });
+      
+      // Update global user data
+      updateUserData({
+        ...userData,
+        blockedUsers: updatedBlockedUsers
+      });
+      
+      setSaveStatus('User unblocked successfully!');
+      setTimeout(() => setSaveStatus(''), 3000);
+    } else {
+      throw new Error(response.data.message || 'Failed to unblock user');
+    }
+  } catch (error) {
+    console.error('Error unblocking user:', error);
+    setSaveStatus('Error: ' + (error.response?.data?.message || error.message));
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="space-y-6">
@@ -210,7 +261,7 @@ const AccountSettings = ({ userData, updateUserData }) => {
 };
 
 // Privacy Settings Component
-// Privacy Settings Component - WITH BACKEND SAVING
+// Privacy Settings Component - UPDATED (removed debug info and improved blocked users)
 const PrivacySettings = ({ userData, updateUserData }) => {
   const [privacySettings, setPrivacySettings] = useState({
     showEmail: userData?.privacySettings?.showEmail || false,
@@ -222,54 +273,156 @@ const PrivacySettings = ({ userData, updateUserData }) => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
+  const [blockedUsersDetails, setBlockedUsersDetails] = useState([]); // NEW: Store detailed user info
 
   // Load user settings when component mounts
   useEffect(() => {
     if (userData?.privacySettings) {
-      console.log("📥 Loading user privacy settings:", userData.privacySettings);
       setPrivacySettings(userData.privacySettings);
     }
   }, [userData]);
 
-const handlePrivacyChange = async (setting, value) => {
-  console.log(`🔄 Changing ${setting} to ${value}`);
-  
-  // Immediately update UI
-  const newSettings = { ...privacySettings, [setting]: value };
-  setPrivacySettings(newSettings);
-  setSaveStatus('saving...');
-  
-  setIsLoading(true);
-  try {
-    console.log("📡 Sending to backend:", newSettings);
+  // Fetch blocked users details when component mounts or blocked users change
+  useEffect(() => {
+    const fetchBlockedUsersDetails = async () => {
+      if (userData?.blockedUsers && userData.blockedUsers.length > 0) {
+        try {
+          // Filter out string IDs and only fetch details for objects without full info
+          const usersToFetch = userData.blockedUsers.filter(user => 
+            typeof user === 'string' || !user.name || !user.avatar
+          );
+          
+          if (usersToFetch.length > 0) {
+            const userIds = usersToFetch.map(user => 
+              typeof user === 'string' ? user : user._id
+            ).filter(id => id); // Remove any undefined/null IDs
+            
+            if (userIds.length > 0) {
+              // Fetch user details from backend
+              const response = await API.get(`/users/batch`, {
+                params: { userIds: userIds.join(',') }
+              });
+              
+              if (response.data.success) {
+                // Merge fetched users with existing blocked users
+                const fetchedUsers = response.data.users;
+                const updatedBlockedUsers = userData.blockedUsers.map(user => {
+                  const userId = typeof user === 'string' ? user : user._id;
+                  const fetchedUser = fetchedUsers.find(u => u._id === userId);
+                  return fetchedUser || user;
+                });
+                
+                // Update state with detailed user info
+                setBlockedUsersDetails(updatedBlockedUsers);
+              }
+            }
+          } else {
+            // If all users already have details, use them directly
+            setBlockedUsersDetails(userData.blockedUsers);
+          }
+        } catch (error) {
+          console.error('Error fetching blocked users details:', error);
+          // Fallback to whatever data we have
+          setBlockedUsersDetails(userData.blockedUsers);
+        }
+      } else {
+        setBlockedUsersDetails([]);
+      }
+    };
+
+    fetchBlockedUsersDetails();
+  }, [userData?.blockedUsers]);
+
+  const handlePrivacyChange = async (setting, value) => {
+    // Immediately update UI
+    const newSettings = { ...privacySettings, [setting]: value };
+    setPrivacySettings(newSettings);
+    setSaveStatus('saving...');
     
-    // Use the imported function directly
-    const response = await updatePrivacySettings(newSettings);
-    
-    console.log("✅ Backend response:", response);
-    
-    if (response.data.success) {
-      // Update global user data
-      updateUserData({ 
-        ...userData, 
-        privacySettings: newSettings 
-      });
-      setSaveStatus('Saved successfully!');
-      console.log('✅ Privacy settings saved successfully');
+    setIsLoading(true);
+    try {
+      // Use the imported function directly
+      const response = await updatePrivacySettings(newSettings);
       
-      setTimeout(() => setSaveStatus(''), 3000);
-    } else {
-      throw new Error(response.data.message || 'Failed to save');
+      if (response.data.success) {
+        // Update global user data
+        updateUserData({ 
+          ...userData, 
+          privacySettings: newSettings 
+        });
+        setSaveStatus('Saved successfully!');
+        
+        setTimeout(() => setSaveStatus(''), 3000);
+      } else {
+        throw new Error(response.data.message || 'Failed to save');
+      }
+    } catch (error) {
+      console.error('Error saving privacy settings:', error);
+      setSaveStatus('Error: ' + (error.response?.data?.message || error.message));
+      // Revert on error
+      setPrivacySettings(prev => ({ ...prev, [setting]: !value }));
+    } finally {
+      setIsLoading(false);
     }
-  } catch (error) {
-    console.error('❌ Error saving privacy settings:', error);
-    setSaveStatus('Error: ' + (error.response?.data?.message || error.message));
-    // Revert on error
-    setPrivacySettings(prev => ({ ...prev, [setting]: !value }));
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
+
+  // Handle unblock user from settings
+  const handleUnblockUser = async (userToUnblock) => {
+    const userIdToUnblock = typeof userToUnblock === 'object' ? userToUnblock._id : userToUnblock;
+    
+    if (!userIdToUnblock) {
+      alert('Invalid user');
+      return;
+    }
+
+    const userName = typeof userToUnblock === 'object' 
+      ? userToUnblock.name || userToUnblock.username || 'this user'
+      : 'this user';
+
+    const confirmUnblock = window.confirm(
+      `Are you sure you want to unblock ${userName}?`
+    );
+
+    if (!confirmUnblock) return;
+
+    setIsLoading(true);
+    try {
+      // Call unblock API
+      const response = await unblockUser(userIdToUnblock);
+      
+      if (response.data.success) {
+        // Update blocked users list
+        const updatedBlockedUsers = (userData.blockedUsers || []).filter(user => {
+          const userId = typeof user === 'object' ? user._id : user;
+          return userId !== userIdToUnblock;
+        });
+        
+        // Update global user data
+        updateUserData({
+          ...userData,
+          blockedUsers: updatedBlockedUsers
+        });
+        
+        // Also update local state
+        setBlockedUsersDetails(prev => 
+          prev.filter(user => {
+            const userId = typeof user === 'object' ? user._id : user;
+            return userId !== userIdToUnblock;
+          })
+        );
+        
+        setSaveStatus(`${userName} unblocked successfully!`);
+        setTimeout(() => setSaveStatus(''), 3000);
+      } else {
+        throw new Error(response.data.message || 'Failed to unblock user');
+      }
+    } catch (error) {
+      console.error('Error unblocking user:', error);
+      setSaveStatus('Error: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const privacyOptions = [
     { id: 'showEmail', label: 'Show Email', description: 'Display your email on profile' },
@@ -328,29 +481,92 @@ const handlePrivacyChange = async (setting, value) => {
         ))}
       </div>
 
-      {/* Debug Info */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <p className="text-blue-800 text-sm">
-          <strong>Current State:</strong> {JSON.stringify(privacySettings)}
-        </p>
-        <p className="text-blue-800 text-sm mt-1">
-          <strong>User Data State:</strong> {JSON.stringify(userData?.privacySettings)}
-        </p>
-      </div>
+      {/* REMOVED THE DEBUG INFO BLUE SECTION */}
 
-      {/* Blocked Users Section */}
+      {/* Blocked Users Section - IMPROVED */}
       <div className="bg-gray-50 rounded-xl p-6 mt-8">
         <h3 className="font-semibold text-gray-800 mb-4">Blocked Users</h3>
         <p className="text-gray-600 mb-4">
           Manage users you've blocked. Blocked users cannot message you or view your profile.
         </p>
-        <div className="text-center py-8">
-          <Shield className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-          <p className="text-gray-500">No blocked users yet</p>
-          <p className="text-sm text-gray-400 mt-1">
-            Blocked users will appear here when you block someone
-          </p>
-        </div>
+        
+        {blockedUsersDetails.length > 0 ? (
+          <div className="space-y-4">
+            {/* Horizontal Scroll List */}
+            <div className="flex gap-4 pb-4 overflow-x-auto">
+              {blockedUsersDetails.map((blockedUser) => {
+                const userId = typeof blockedUser === 'object' ? blockedUser._id : blockedUser;
+                const userName = typeof blockedUser === 'object' 
+                  ? blockedUser.name || blockedUser.username || 'Unknown User'
+                  : 'Unknown User';
+                const userAvatar = typeof blockedUser === 'object' ? blockedUser.avatar : null;
+                const userUsername = typeof blockedUser === 'object' 
+                  ? blockedUser.username 
+                  : 'unknown';
+                
+                return (
+                  <div 
+                    key={userId}
+                    className="bg-white rounded-xl p-4 min-w-48 border border-gray-200 shadow-sm flex flex-col items-center text-center"
+                  >
+                    {/* User Avatar */}
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-r from-gray-400 to-gray-600 flex items-center justify-center text-white mb-3 overflow-hidden border-2 border-white shadow">
+                      {userAvatar ? (
+                        <img 
+                          src={userAvatar} 
+                          alt={userName}
+                          className="w-full h-full rounded-full object-cover"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            e.target.parentElement.innerHTML = '<User size={24} />';
+                          }}
+                        />
+                      ) : (
+                        <User size={24} />
+                      )}
+                    </div>
+                    
+                    {/* User Info */}
+                    <div className="mb-3">
+                      <p className="font-medium text-gray-800 truncate">
+                        {userName}
+                      </p>
+                      <p className="text-sm text-gray-500 truncate">
+                        @{userUsername}
+                      </p>
+                    </div>
+                    
+                    {/* Unblock Button */}
+                    <button
+                      onClick={() => handleUnblockUser(blockedUser)}
+                      disabled={isLoading}
+                      className={`w-full py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-medium text-sm transition ${
+                        isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:from-blue-700 hover:to-blue-800'
+                      }`}
+                    >
+                      {isLoading ? 'Processing...' : 'Unblock'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Blocked Users Count */}
+            <div className="text-center pt-2">
+              <p className="text-gray-500 text-sm">
+                You have blocked {blockedUsersDetails.length} user{blockedUsersDetails.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <Shield className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+            <p className="text-gray-500">No blocked users yet</p>
+            <p className="text-sm text-gray-400 mt-1">
+              Blocked users will appear here when you block someone
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
