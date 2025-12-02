@@ -60,9 +60,9 @@ function App() {
             <Route index element={<Feed />} /> {/* Default feed */}
             <Route path="profile" element={<Profile />} /> {/* Profile page */}
             <Route path="create-post" element={<div>Create Post Page</div>} /> {/* Create post page */}
-            <Route path="user/:userId" element={<OtherUserProfile />} /> {/* ✅ MOVED INSIDE - will have sidebars */}
-            <Route path="search" element={<Search />} /> {/* ✅ MOVED INSIDE - will have sidebars */}
-            <Route path="settings" element={<Settings />} /> {/* ✅ MOVED INSIDE - will have sidebars */}
+            <Route path="user/:userId" element={<OtherUserProfile />} />
+            <Route path="search" element={<Search />} />
+            <Route path="settings" element={<Settings />} />
           </Route>
 
           {/* Routes that DON'T need sidebars */}

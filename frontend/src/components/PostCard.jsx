@@ -28,3 +28,4 @@ export default function PostCard({ post, onReact, onComment }) {
     </div>
   );
 }
+ 

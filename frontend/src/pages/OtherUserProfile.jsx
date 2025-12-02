@@ -335,13 +335,14 @@ const OtherUserProfile = () => {
   };
 
   // Handle view posts
-  const handleViewPosts = (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    navigate(`/user/${userId}/posts`);
-  };
+const handleViewPosts = (e) => {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  navigate(`/user/${userId}/posts`);
+};
+  
 
   // Handle modal toggles
   const toggleOptions = (e) => {
@@ -999,13 +1000,6 @@ const OtherUserProfile = () => {
               </div>
               
               <div className="space-y-2">
-                <button
-                  onClick={handleViewPosts}
-                  className="w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition"
-                >
-                  <Eye size={18} />
-                  View Posts
-                </button>
                 
                 <button
                   onClick={confirmBlockUser}
@@ -1239,10 +1233,15 @@ const OtherUserProfile = () => {
                 <p className="text-xs sm:text-sm text-gray-600">Followers</p>
               </div>
               
-              <div className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg sm:rounded-xl">
-                <p className="text-xl sm:text-2xl font-bold text-purple-600">{userProfile.postsCount || 0}</p>
-                <p className="text-xs sm:text-sm text-gray-600">Posts</p>
-              </div>
+             {/* Clickable Posts Box */}
+{/* Clickable Posts Box */}
+<div 
+  className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg sm:rounded-xl cursor-pointer hover:bg-purple-100 transition-colors"
+  onClick={handleViewPosts}
+>
+  <p className="text-xl sm:text-2xl font-bold text-purple-600">{userProfile.postsCount || 0}</p>
+  <p className="text-xs sm:text-sm text-gray-600">Posts</p>
+</div>
             </div>
           </motion.div>
 
