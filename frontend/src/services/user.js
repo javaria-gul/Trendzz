@@ -51,7 +51,7 @@ export const getFollowingList = async (userId) => {
 // Add this function to get user by ID
 export const getUserById = async (userId) => {
   try {
-    const response = await API.get(`/users/${userId}`);
+    const response = await API.get(`/users/simple/${userId}`);
     return response;
   } catch (error) {
     console.error("Get user by ID error:", error);

@@ -8,8 +8,38 @@ import {
   getFollowingList,    // ADDED
   getFollowersList     // ADDED
 } from "../controllers/userController.js";
-
 const router = express.Router();
+// ADD THIS ROUTE - Simple user details (for blocked users list)
+router.get("/simple/:userId", requireAuth, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    
+    const user = await User.findById(userId)
+      .select("name username avatar bio role semester batch")
+      .lean();
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "User not found" 
+      });
+    }
+    
+    res.json({
+      success: true,
+      user: user
+    });
+    
+  } catch (error) {
+    console.error("Error fetching simple user details:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error" 
+    });
+  }
+});
+
+
 // Add these routes
 router.get('/following/:userId', requireAuth, getFollowingList);
 router.get('/followers/:userId', requireAuth, getFollowersList);

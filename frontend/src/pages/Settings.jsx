@@ -1,5 +1,6 @@
 import React, { useState, useContext, useEffect } from 'react'; // ADD useEffect here
-import { motion } from 'framer-motion';
+// Replace the existing motion import with this:
+import { motion, AnimatePresence } from 'framer-motion';
 import { AuthContext } from '../context/AuthContext';
 import { updatePrivacySettings, unblockUser } from '../services/user';
 import { 
@@ -14,7 +15,6 @@ import {
   X,
   Save,
   Edit3,
-  ArrowLeft,
   XCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -38,13 +38,6 @@ const Settings = () => {
           {/* Header with Back Button */}
           <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate(-1)}
-                className="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors"
-              >
-                <ArrowLeft size={20} />
-                <span>Back</span>
-              </button>
               <div>
                 <h1 className="text-2xl font-bold text-gray-800">Settings</h1>
                 <p className="text-gray-600">Manage your account preferences and privacy</p>
@@ -261,7 +254,7 @@ const handleUnblockUser = async (userToUnblock) => {
 };
 
 // Privacy Settings Component
-// Privacy Settings Component - UPDATED (removed debug info and improved blocked users)
+// Privacy Settings Component - UPDATED with custom confirmation and clickable users
 const PrivacySettings = ({ userData, updateUserData }) => {
   const [privacySettings, setPrivacySettings] = useState({
     showEmail: userData?.privacySettings?.showEmail || false,
@@ -273,57 +266,80 @@ const PrivacySettings = ({ userData, updateUserData }) => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
-  const [blockedUsersDetails, setBlockedUsersDetails] = useState([]); // NEW: Store detailed user info
+  const [blockedUsersDetails, setBlockedUsersDetails] = useState([]);
+  const [showUnblockConfirm, setShowUnblockConfirm] = useState(false);
+  const [userToUnblock, setUserToUnblock] = useState(null);
+  const [showSuccessMessage, setShowSuccessMessage] = useState('');
+  const navigate = useNavigate(); // ADD THIS FOR NAVIGATION
 
   // Load user settings when component mounts
   useEffect(() => {
     if (userData?.privacySettings) {
+      console.log("📥 Loading user privacy settings:", userData.privacySettings);
       setPrivacySettings(userData.privacySettings);
     }
   }, [userData]);
 
-  // Fetch blocked users details when component mounts or blocked users change
+  // Fetch blocked users details when component mounts
   useEffect(() => {
     const fetchBlockedUsersDetails = async () => {
       if (userData?.blockedUsers && userData.blockedUsers.length > 0) {
+        setIsLoading(true);
         try {
-          // Filter out string IDs and only fetch details for objects without full info
-          const usersToFetch = userData.blockedUsers.filter(user => 
-            typeof user === 'string' || !user.name || !user.avatar
-          );
+          console.log("📥 Fetching details for blocked users:", userData.blockedUsers);
           
-          if (usersToFetch.length > 0) {
-            const userIds = usersToFetch.map(user => 
-              typeof user === 'string' ? user : user._id
-            ).filter(id => id); // Remove any undefined/null IDs
-            
-            if (userIds.length > 0) {
-              // Fetch user details from backend
-              const response = await API.get(`/users/batch`, {
-                params: { userIds: userIds.join(',') }
-              });
+          // Fetch details for each blocked user using your existing profile endpoint
+          const userPromises = userData.blockedUsers.map(async (userId) => {
+            try {
+              // Use the existing profile endpoint
+              const response = await API.get(`/users/profile/${userId}`);
               
-              if (response.data.success) {
-                // Merge fetched users with existing blocked users
-                const fetchedUsers = response.data.users;
-                const updatedBlockedUsers = userData.blockedUsers.map(user => {
-                  const userId = typeof user === 'string' ? user : user._id;
-                  const fetchedUser = fetchedUsers.find(u => u._id === userId);
-                  return fetchedUser || user;
-                });
-                
-                // Update state with detailed user info
-                setBlockedUsersDetails(updatedBlockedUsers);
+              if (response.data.success && response.data.data) {
+                // Return the user data
+                return {
+                  _id: userId,
+                  name: response.data.data.name || 'Unknown User',
+                  username: response.data.data.username || `user_${userId.slice(-4)}`,
+                  avatar: response.data.data.avatar || null,
+                  bio: response.data.data.bio || '',
+                  role: response.data.data.role || 'user',
+                  coverImage: response.data.data.coverImage || null
+                };
               }
+              
+              // Fallback if response structure is different
+              return { 
+                _id: userId, 
+                name: 'Unknown User', 
+                username: `user_${userId.slice(-4)}`,
+                avatar: null
+              };
+            } catch (error) {
+              console.error(`Error fetching user ${userId}:`, error);
+              return { 
+                _id: userId, 
+                name: 'User Not Found', 
+                username: `user_${userId.slice(-4)}`,
+                avatar: null
+              };
             }
-          } else {
-            // If all users already have details, use them directly
-            setBlockedUsersDetails(userData.blockedUsers);
-          }
+          });
+          
+          const users = await Promise.all(userPromises);
+          console.log("✅ Fetched blocked users details:", users);
+          setBlockedUsersDetails(users);
         } catch (error) {
           console.error('Error fetching blocked users details:', error);
-          // Fallback to whatever data we have
-          setBlockedUsersDetails(userData.blockedUsers);
+          // Fallback: create basic user objects from IDs
+          const fallbackUsers = userData.blockedUsers.map(userId => ({
+            _id: userId,
+            name: `User ${userId.slice(-6)}`,
+            username: `user_${userId.slice(-4)}`,
+            avatar: null
+          }));
+          setBlockedUsersDetails(fallbackUsers);
+        } finally {
+          setIsLoading(false);
         }
       } else {
         setBlockedUsersDetails([]);
@@ -334,6 +350,8 @@ const PrivacySettings = ({ userData, updateUserData }) => {
   }, [userData?.blockedUsers]);
 
   const handlePrivacyChange = async (setting, value) => {
+    console.log(`🔄 Changing ${setting} to ${value}`);
+    
     // Immediately update UI
     const newSettings = { ...privacySettings, [setting]: value };
     setPrivacySettings(newSettings);
@@ -341,8 +359,12 @@ const PrivacySettings = ({ userData, updateUserData }) => {
     
     setIsLoading(true);
     try {
+      console.log("📡 Sending to backend:", newSettings);
+      
       // Use the imported function directly
       const response = await updatePrivacySettings(newSettings);
+      
+      console.log("✅ Backend response:", response);
       
       if (response.data.success) {
         // Update global user data
@@ -351,13 +373,14 @@ const PrivacySettings = ({ userData, updateUserData }) => {
           privacySettings: newSettings 
         });
         setSaveStatus('Saved successfully!');
+        console.log('✅ Privacy settings saved successfully');
         
         setTimeout(() => setSaveStatus(''), 3000);
       } else {
         throw new Error(response.data.message || 'Failed to save');
       }
     } catch (error) {
-      console.error('Error saving privacy settings:', error);
+      console.error('❌ Error saving privacy settings:', error);
       setSaveStatus('Error: ' + (error.response?.data?.message || error.message));
       // Revert on error
       setPrivacySettings(prev => ({ ...prev, [setting]: !value }));
@@ -366,24 +389,18 @@ const PrivacySettings = ({ userData, updateUserData }) => {
     }
   };
 
+  // Handle unblock user confirmation
+  const confirmUnblockUser = (user) => {
+    setUserToUnblock(user);
+    setShowUnblockConfirm(true);
+  };
+
   // Handle unblock user from settings
-  const handleUnblockUser = async (userToUnblock) => {
-    const userIdToUnblock = typeof userToUnblock === 'object' ? userToUnblock._id : userToUnblock;
-    
-    if (!userIdToUnblock) {
-      alert('Invalid user');
-      return;
-    }
+  const handleUnblockUser = async () => {
+    if (!userToUnblock) return;
 
-    const userName = typeof userToUnblock === 'object' 
-      ? userToUnblock.name || userToUnblock.username || 'this user'
-      : 'this user';
-
-    const confirmUnblock = window.confirm(
-      `Are you sure you want to unblock ${userName}?`
-    );
-
-    if (!confirmUnblock) return;
+    const userIdToUnblock = userToUnblock._id;
+    const userName = userToUnblock.name || userToUnblock.username || 'this user';
 
     setIsLoading(true);
     try {
@@ -392,10 +409,9 @@ const PrivacySettings = ({ userData, updateUserData }) => {
       
       if (response.data.success) {
         // Update blocked users list
-        const updatedBlockedUsers = (userData.blockedUsers || []).filter(user => {
-          const userId = typeof user === 'object' ? user._id : user;
-          return userId !== userIdToUnblock;
-        });
+        const updatedBlockedUsers = (userData.blockedUsers || []).filter(userId => 
+          userId !== userIdToUnblock
+        );
         
         // Update global user data
         updateUserData({
@@ -403,25 +419,38 @@ const PrivacySettings = ({ userData, updateUserData }) => {
           blockedUsers: updatedBlockedUsers
         });
         
-        // Also update local state
+        // Update local state
         setBlockedUsersDetails(prev => 
-          prev.filter(user => {
-            const userId = typeof user === 'object' ? user._id : user;
-            return userId !== userIdToUnblock;
-          })
+          prev.filter(user => user._id !== userIdToUnblock)
         );
         
-        setSaveStatus(`${userName} unblocked successfully!`);
-        setTimeout(() => setSaveStatus(''), 3000);
+        // Show success message
+        setShowSuccessMessage(`${userName} unblocked successfully!`);
+        setTimeout(() => setShowSuccessMessage(''), 3000);
+        
       } else {
         throw new Error(response.data.message || 'Failed to unblock user');
       }
     } catch (error) {
       console.error('Error unblocking user:', error);
-      setSaveStatus('Error: ' + (error.response?.data?.message || error.message));
+      setShowSuccessMessage('Error: ' + (error.response?.data?.message || error.message));
+      setTimeout(() => setShowSuccessMessage(''), 3000);
     } finally {
       setIsLoading(false);
+      setShowUnblockConfirm(false);
+      setUserToUnblock(null);
     }
+  };
+
+  // Cancel unblock
+  const cancelUnblockUser = () => {
+    setShowUnblockConfirm(false);
+    setUserToUnblock(null);
+  };
+
+  // Handle click on user profile
+  const handleUserClick = (userId) => {
+    navigate(`/user/${userId}`);
   };
 
   const privacyOptions = [
@@ -432,12 +461,66 @@ const PrivacySettings = ({ userData, updateUserData }) => {
     { id: 'showOnlineStatus', label: 'Show Online Status', description: 'Display when you are online' }
   ];
 
+  // Helper function to get avatar color
+  const getAvatarColor = (userId) => {
+    const colors = [
+      'from-blue-500 to-blue-600',
+      'from-purple-500 to-purple-600',
+      'from-pink-500 to-pink-600',
+      'from-red-500 to-red-600',
+      'from-orange-500 to-orange-600',
+      'from-green-500 to-green-600',
+      'from-teal-500 to-teal-600',
+      'from-indigo-500 to-indigo-600'
+    ];
+    
+    if (!userId) return colors[0];
+    
+    let hash = 0;
+    for (let i = 0; i < userId.length; i++) {
+      hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  // Helper function to get user initials
+  const getUserInitials = (name) => {
+    if (!name) return 'U';
+    const initials = name
+      .split(' ')
+      .map(word => word[0])
+      .join('')
+      .toUpperCase();
+    return initials.length > 2 ? initials.slice(0, 2) : initials;
+  };
+
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-bold text-gray-800 mb-6">Privacy Settings</h2>
       
+      {/* Success Message */}
+      <AnimatePresence>
+        {showSuccessMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50"
+          >
+            <div className={`px-6 py-3 rounded-lg shadow-lg font-medium ${
+              showSuccessMessage.includes('Error') 
+                ? 'bg-red-500 text-white' 
+                : 'bg-green-500 text-white'
+            }`}>
+              {showSuccessMessage}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Save Status */}
-      {saveStatus && (
+      {saveStatus && !showSuccessMessage && (
         <div className={`p-4 rounded-lg ${
           saveStatus.includes('Error') || saveStatus.includes('Failed') 
             ? 'bg-red-50 border border-red-200 text-red-800' 
@@ -447,6 +530,7 @@ const PrivacySettings = ({ userData, updateUserData }) => {
         </div>
       )}
       
+      {/* Privacy Options */}
       <div className="space-y-4">
         {privacyOptions.map((option) => (
           <div 
@@ -481,74 +565,158 @@ const PrivacySettings = ({ userData, updateUserData }) => {
         ))}
       </div>
 
-      {/* REMOVED THE DEBUG INFO BLUE SECTION */}
-
-      {/* Blocked Users Section - IMPROVED */}
+      {/* Unblock Confirmation Modal - Matches OtherUserProfile style */}
+      <AnimatePresence>
+  {showUnblockConfirm && userToUnblock && (
+    <>
+      {/* Backdrop with blur */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black bg-opacity-50 z-40"
+        onClick={cancelUnblockUser}
+      />
+      
+      {/* Blur layer */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 backdrop-blur-sm z-40"
+        onClick={cancelUnblockUser}
+      />
+      
+      {/* Modal content */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      >
+        <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-auto shadow-2xl">
+          <div className="text-center">
+            <div className="w-16 h-16 mx-auto bg-blue-100 rounded-full flex items-center justify-center mb-4">
+              <Shield className="text-blue-600" size={24} />
+            </div>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">
+              Unblock {userToUnblock.name}?
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to unblock this user? You will be able to see their profile and posts again.
+            </p>
+            
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={cancelUnblockUser}
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUnblockUser}
+                disabled={isLoading}
+                className={`px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium ${
+                  isLoading ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+              >
+                {isLoading ? 'Unblocking...' : 'Unblock User'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </>
+  )}
+</AnimatePresence>
+      {/* Blocked Users Section */}
       <div className="bg-gray-50 rounded-xl p-6 mt-8">
-        <h3 className="font-semibold text-gray-800 mb-4">Blocked Users</h3>
-        <p className="text-gray-600 mb-4">
-          Manage users you've blocked. Blocked users cannot message you or view your profile.
-        </p>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-semibold text-gray-800 text-lg">Blocked Users</h3>
+            <p className="text-gray-600">
+              Blocked users cannot message you or view your profile.
+            </p>
+          </div>
+          {blockedUsersDetails.length > 0 && (
+            <span className="bg-gray-200 text-gray-800 text-sm font-medium px-3 py-1 rounded-full">
+              {blockedUsersDetails.length} blocked
+            </span>
+          )}
+        </div>
         
-        {blockedUsersDetails.length > 0 ? (
+        {isLoading ? (
+          <div className="text-center py-8">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-3"></div>
+            <p className="text-gray-500">Loading blocked users...</p>
+          </div>
+        ) : blockedUsersDetails.length > 0 ? (
           <div className="space-y-4">
-            {/* Horizontal Scroll List */}
-            <div className="flex gap-4 pb-4 overflow-x-auto">
-              {blockedUsersDetails.map((blockedUser) => {
-                const userId = typeof blockedUser === 'object' ? blockedUser._id : blockedUser;
-                const userName = typeof blockedUser === 'object' 
-                  ? blockedUser.name || blockedUser.username || 'Unknown User'
-                  : 'Unknown User';
-                const userAvatar = typeof blockedUser === 'object' ? blockedUser.avatar : null;
-                const userUsername = typeof blockedUser === 'object' 
-                  ? blockedUser.username 
-                  : 'unknown';
-                
-                return (
-                  <div 
-                    key={userId}
-                    className="bg-white rounded-xl p-4 min-w-48 border border-gray-200 shadow-sm flex flex-col items-center text-center"
-                  >
-                    {/* User Avatar */}
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-r from-gray-400 to-gray-600 flex items-center justify-center text-white mb-3 overflow-hidden border-2 border-white shadow">
-                      {userAvatar ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {blockedUsersDetails.map((user) => (
+                <div 
+                  key={user._id}
+                  className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-center gap-4">
+                    {/* Avatar - Clickable */}
+                    <div 
+                      onClick={() => handleUserClick(user._id)}
+                      className={`w-14 h-14 rounded-full bg-gradient-to-r ${getAvatarColor(user._id)} flex items-center justify-center text-white font-bold text-lg shadow-md flex-shrink-0 overflow-hidden cursor-pointer hover:opacity-90 transition-opacity`}
+                    >
+                      {user.avatar ? (
                         <img 
-                          src={userAvatar} 
-                          alt={userName}
+                          src={user.avatar} 
+                          alt={user.name}
                           className="w-full h-full rounded-full object-cover"
                           onError={(e) => {
                             e.target.style.display = 'none';
-                            e.target.parentElement.innerHTML = '<User size={24} />';
+                            e.target.parentElement.innerHTML = `<span>${getUserInitials(user.name)}</span>`;
                           }}
                         />
                       ) : (
-                        <User size={24} />
+                        getUserInitials(user.name)
                       )}
                     </div>
                     
-                    {/* User Info */}
-                    <div className="mb-3">
-                      <p className="font-medium text-gray-800 truncate">
-                        {userName}
-                      </p>
+                    {/* User Info - Clickable */}
+                    <div 
+                      onClick={() => handleUserClick(user._id)}
+                      className="flex-1 min-w-0 cursor-pointer hover:opacity-90 transition-opacity"
+                    >
+                      <h4 className="font-semibold text-gray-800 truncate">
+                        {user.name || 'Unknown User'}
+                      </h4>
                       <p className="text-sm text-gray-500 truncate">
-                        @{userUsername}
+                        @{user.username || `user_${user._id.slice(-4)}`}
                       </p>
+                      {user.bio && (
+                        <p className="text-xs text-gray-400 truncate mt-1">
+                          {user.bio}
+                        </p>
+                      )}
+                      {user.role && user.role !== 'user' && (
+                        <p className="text-xs text-purple-600 font-medium mt-1">
+                          {user.role}
+                        </p>
+                      )}
                     </div>
                     
                     {/* Unblock Button */}
                     <button
-                      onClick={() => handleUnblockUser(blockedUser)}
+                      onClick={() => confirmUnblockUser(user)}
                       disabled={isLoading}
-                      className={`w-full py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-medium text-sm transition ${
-                        isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:from-blue-700 hover:to-blue-800'
+                      className={`px-4 py-2 rounded-lg font-medium text-sm transition ${
+                        isLoading 
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                          : 'bg-gradient-to-r from-blue-50 to-blue-100 text-blue-600 border border-blue-200 hover:from-blue-100 hover:to-blue-200 hover:border-blue-300'
                       }`}
                     >
-                      {isLoading ? 'Processing...' : 'Unblock'}
+                      Unblock
                     </button>
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
             
             {/* Blocked Users Count */}
@@ -560,10 +728,12 @@ const PrivacySettings = ({ userData, updateUserData }) => {
           </div>
         ) : (
           <div className="text-center py-8">
-            <Shield className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-            <p className="text-gray-500">No blocked users yet</p>
+            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+              <Shield className="w-8 h-8 text-gray-400" />
+            </div>
+            <p className="text-gray-500 font-medium">No blocked users yet</p>
             <p className="text-sm text-gray-400 mt-1">
-              Blocked users will appear here when you block someone
+              When you block someone, they will appear here
             </p>
           </div>
         )}
@@ -571,7 +741,6 @@ const PrivacySettings = ({ userData, updateUserData }) => {
     </div>
   );
 };
-
 // Security Settings Component
 const SecuritySettings = () => {
   const [currentPassword, setCurrentPassword] = useState('');
