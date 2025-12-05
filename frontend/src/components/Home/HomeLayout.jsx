@@ -7,7 +7,7 @@ import { Outlet, useLocation } from "react-router-dom";
 const HomeLayout = () => {
   const location = useLocation();
   const isChatPage = location.pathname.startsWith("/chat");
-  const isUserProfilePage = location.pathname.startsWith("/user/");
+ 
 
   // Show sidebars for ALL pages except chat
   const showSidebars = !isChatPage;

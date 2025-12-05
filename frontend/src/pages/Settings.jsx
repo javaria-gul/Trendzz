@@ -1019,7 +1019,6 @@ const SecuritySettings = () => {
     </div>
   );
 };
-
 // Appearance Settings Component
 const AppearanceSettings = ({ darkMode, setDarkMode }) => {
   return (
