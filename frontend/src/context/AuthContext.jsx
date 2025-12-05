@@ -57,22 +57,34 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Enhanced updateUserData function for block/unblock
-  const updateUserData = (newData) => {
-    console.log('🔄 AuthContext: updateUserData called with:', newData);
+// Enhanced updateUserData function for block/unblock
+const updateUserData = (newData) => {
+  console.log('🔄 AuthContext: updateUserData called with:', newData);
+  
+  setUserData(prevData => {
+    // Deep merge to ensure nested objects update correctly
+    const updatedData = {
+      ...prevData,
+      ...newData,
+      // If privacySettings exists in newData, merge it properly
+      ...(newData.privacySettings && {
+        privacySettings: {
+          ...prevData.privacySettings,
+          ...newData.privacySettings
+        }
+      })
+    };
     
-    setUserData(prevData => {
-      const updatedData = { ...prevData, ...newData };
-      
-      // Ensure blockedUsers array exists and is properly formatted
-      if (updatedData.blockedUsers && !Array.isArray(updatedData.blockedUsers)) {
-        updatedData.blockedUsers = [];
-      }
-      
-      console.log('🔄 AuthContext: Updated user data:', updatedData);
-      localStorage.setItem("trendzz_user", JSON.stringify(updatedData));
-      return updatedData;
-    });
-  };
+    // Ensure blockedUsers array exists and is properly formatted
+    if (updatedData.blockedUsers && !Array.isArray(updatedData.blockedUsers)) {
+      updatedData.blockedUsers = [];
+    }
+    
+    console.log('🔄 AuthContext: Updated user data:', updatedData);
+    localStorage.setItem("trendzz_user", JSON.stringify(updatedData));
+    return updatedData;
+  });
+};
 
   // UPDATE completeOnboarding function
   const completeOnboarding = async (userData) => {

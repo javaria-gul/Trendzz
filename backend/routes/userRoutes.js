@@ -5,10 +5,11 @@ import {
   updatePrivacySettings, 
   debugPrivacySettings, 
   updateUserPrivacy,
-  getFollowingList,    // ADDED
-  getFollowersList     // ADDED
+  getFollowingList,
+  getFollowersList
 } from "../controllers/userController.js";
 const router = express.Router();
+
 // ADD THIS ROUTE - Simple user details (for blocked users list)
 router.get("/simple/:userId", requireAuth, async (req, res) => {
   try {
@@ -39,7 +40,6 @@ router.get("/simple/:userId", requireAuth, async (req, res) => {
   }
 });
 
-
 // Add these routes
 router.get('/following/:userId', requireAuth, getFollowingList);
 router.get('/followers/:userId', requireAuth, getFollowersList);
@@ -55,6 +55,93 @@ router.get('/test-privacy', requireAuth, (req, res) => {
     message: "Privacy endpoint is working!",
     user: req.user.id 
   });
+});
+
+// Email update endpoint - ADDED CORRECTLY (ONLY ONCE)
+router.put("/update-email", requireAuth, async (req, res) => {
+  try {
+    const { email } = req.body;
+    const userId = req.user._id;
+
+    console.log("📧 Email update request - User:", userId, "New email:", email);
+
+    // Validate email
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid email address"
+      });
+    }
+
+    // Check if email is different from current
+    const currentUser = await User.findById(userId);
+    if (currentUser.email === email) {
+      return res.status(400).json({
+        success: false,
+        message: "This is already your current email"
+      });
+    }
+
+    // Check if email already exists for another user
+    const existingUser = await User.findOne({ email: email });
+    if (existingUser && existingUser._id.toString() !== userId.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: "This email is already in use by another account"
+      });
+    }
+
+    // Update email in database
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { 
+        email: email,
+        isEmailVerified: false // Reset verification when email changes
+      },
+      { new: true }
+    ).select("name email username avatar role semester batch privacySettings blockedUsers following followers createdAt updatedAt");
+
+    console.log("✅ Email updated successfully for user:", updatedUser.name);
+
+    res.json({
+      success: true,
+      message: "Email updated successfully. Please verify your new email.",
+      user: updatedUser
+    });
+
+  } catch (error) {
+    console.error("❌ Email update error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error updating email: " + error.message
+    });
+  }
+});
+
+// Add this test route to verify email endpoint
+router.put("/test-email", requireAuth, async (req, res) => {
+  try {
+    const { email } = req.body;
+    console.log("🧪 TEST: Email update test");
+    console.log("🧪 User ID:", req.user._id);
+    console.log("🧪 Current email:", req.user.email);
+    console.log("🧪 New email:", email);
+    
+    // Just return success without updating
+    res.json({
+      success: true,
+      message: "Test endpoint works!",
+      testData: {
+        userId: req.user._id,
+        currentEmail: req.user.email,
+        newEmail: email,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error("Test error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 // Search users
@@ -472,7 +559,6 @@ router.post("/block/:userId", requireAuth, async (req, res) => {
   }
 });
 
-// UNBLOCK USER - ADD THIS MISSING ENDPOINT
 // UNBLOCK USER - ENHANCED WITH DEBUG LOGGING
 router.post("/unblock/:userId", requireAuth, async (req, res) => {
   try {
@@ -480,8 +566,6 @@ router.post("/unblock/:userId", requireAuth, async (req, res) => {
     const currentUserId = req.user._id;
 
     console.log("🔓 Unblock request - User:", currentUserId, "Unblocking:", targetUserId);
-    console.log("🔓 Request params:", req.params);
-    console.log("🔓 Current user ID from auth:", req.user._id);
 
     if (targetUserId === currentUserId.toString()) {
       return res.status(400).json({
@@ -502,8 +586,6 @@ router.post("/unblock/:userId", requireAuth, async (req, res) => {
 
     // Check if user is actually blocked
     const currentUser = await User.findById(currentUserId);
-    console.log("🔓 Current user blockedUsers:", currentUser.blockedUsers);
-    console.log("🔓 Looking for targetUserId in blockedUsers:", targetUserId);
     
     if (!currentUser.blockedUsers || !currentUser.blockedUsers.includes(targetUserId)) {
       console.log("❌ User is not in blocked list");
@@ -521,7 +603,6 @@ router.post("/unblock/:userId", requireAuth, async (req, res) => {
     );
 
     console.log("✅ User unblocked successfully");
-    console.log("✅ Updated blockedUsers:", updatedUser.blockedUsers);
 
     res.json({
       success: true,
@@ -530,13 +611,13 @@ router.post("/unblock/:userId", requireAuth, async (req, res) => {
 
   } catch (error) {
     console.error("❌ Unblock user error:", error);
-    console.error("❌ Error details:", error.message);
     res.status(500).json({
       success: false,
       message: "Server error while unblocking user: " + error.message
     });
   }
 });
+
 // Add this temporary debug route to test routing
 router.get("/debug-test", requireAuth, (req, res) => {
   res.json({ 
