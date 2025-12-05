@@ -784,6 +784,7 @@ const PrivacySettings = ({ userData, updateUserData }) => {
 };
 
 // Security Settings Component
+// Security Settings Component
 const SecuritySettings = () => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -792,30 +793,78 @@ const SecuritySettings = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState({ text: '', type: '' }); // success or error
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
     
-    if (newPassword !== confirmPassword) {
-      alert("New passwords don't match!");
+    // Clear previous messages
+    setMessage({ text: '', type: '' });
+    
+    // Validation
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setMessage({ text: 'Please fill in all fields', type: 'error' });
       return;
     }
 
-    if (newPassword.length < 8) {
-      alert("Password must be at least 8 characters long!");
+    if (newPassword !== confirmPassword) {
+      setMessage({ text: "New passwords don't match!", type: 'error' });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setMessage({ text: "Password must be at least 6 characters long!", type: 'error' });
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      setMessage({ text: "New password cannot be the same as current password!", type: 'error' });
       return;
     }
 
     setIsLoading(true);
     try {
-      console.log('Changing password...');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      alert('Password changed successfully!');
+      console.log('📡 Changing password...');
+      
+      // Call the password change API
+      const response = await API.put('/users/change-password', {
+        currentPassword,
+        newPassword
+      });
+      
+      if (response.data.success) {
+        console.log('✅ Password changed successfully');
+        
+        // Show success message
+        setMessage({ 
+          text: 'Password changed successfully!', 
+          type: 'success' 
+        });
+        
+        // Reset form
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        
+        // Clear success message after 5 seconds
+        setTimeout(() => {
+          setMessage({ text: '', type: '' });
+        }, 5000);
+        
+      } else {
+        throw new Error(response.data.message || 'Failed to change password');
+      }
     } catch (error) {
-      console.error('Error changing password:', error);
-      alert('Failed to change password. Please try again.');
+      console.error('❌ Error changing password:', error);
+      setMessage({ 
+        text: error.response?.data?.message || error.message || 'Failed to change password. Please try again.', 
+        type: 'error' 
+      });
+      
+      // Clear error message after 5 seconds
+      setTimeout(() => {
+        setMessage({ text: '', type: '' });
+      }, 5000);
     } finally {
       setIsLoading(false);
     }
@@ -824,6 +873,32 @@ const SecuritySettings = () => {
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-bold text-gray-800 mb-6">Security Settings</h2>
+      
+      {/* Message Display */}
+      {message.text && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`p-4 rounded-lg border ${
+            message.type === 'error' 
+              ? 'bg-red-50 border-red-200 text-red-800' 
+              : 'bg-green-50 border-green-200 text-green-800'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {message.type === 'success' ? (
+              <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            )}
+            <p className="font-medium">{message.text}</p>
+          </div>
+        </motion.div>
+      )}
       
       {/* Change Password Form */}
       <div className="bg-gray-50 rounded-xl p-6">
@@ -843,7 +918,7 @@ const SecuritySettings = () => {
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
               required
-              className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900 placeholder-gray-500"
               placeholder="Enter current password"
             />
             <button
@@ -865,7 +940,7 @@ const SecuritySettings = () => {
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               required
-              className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900 placeholder-gray-500"
               placeholder="Enter new password"
             />
             <button
@@ -887,7 +962,7 @@ const SecuritySettings = () => {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900 placeholder-gray-500"
               placeholder="Confirm new password"
             />
             <button
@@ -902,9 +977,19 @@ const SecuritySettings = () => {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-purple-600 text-white py-3 rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors font-semibold"
+            className="w-full bg-purple-600 text-white py-3 rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors font-semibold flex items-center justify-center gap-2"
           >
-            {isLoading ? 'Changing Password...' : 'Change Password'}
+            {isLoading ? (
+              <>
+                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Changing Password...
+              </>
+            ) : (
+              'Change Password'
+            )}
           </button>
         </form>
       </div>
@@ -913,10 +998,22 @@ const SecuritySettings = () => {
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
         <h3 className="font-semibold text-blue-800 mb-3">Security Tips</h3>
         <ul className="text-blue-700 text-sm space-y-2">
-          <li>• Use a strong, unique password that you don't use elsewhere</li>
-          <li>• Avoid using personal information in your password</li>
-          <li>• Consider using a password manager</li>
-          <li>• Never share your password with anyone</li>
+          <li className="flex items-start gap-2">
+            <span>•</span>
+            <span>Use a strong, unique password that you don't use elsewhere</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span>•</span>
+            <span>Avoid using personal information in your password</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span>•</span>
+            <span>Consider using a password manager</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span>•</span>
+            <span>Never share your password with anyone</span>
+          </li>
         </ul>
       </div>
     </div>

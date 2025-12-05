@@ -1,5 +1,6 @@
 import express from "express";
 import User from "../models/User.js";
+import bcrypt from "bcryptjs"; // ADD THIS LINE
 import requireAuth from "../middleware/authMiddleware.js";
 import { 
   updatePrivacySettings, 
@@ -679,6 +680,74 @@ router.get("/suggested-users", requireAuth, async (req, res) => {
     res.status(500).json({ 
       success: false,
       message: "Server error" 
+    });
+  }
+});
+
+// Change password endpoint
+router.put("/change-password", requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user._id;
+
+    console.log("🔑 Password change request - User:", userId);
+
+    // Validate input
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide both current and new password"
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 6 characters long"
+      });
+    }
+
+    // Get user with password
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Verify current password
+    // IMPORTANT: You need to import bcrypt at the top of your file
+    // Add: import bcrypt from "bcryptjs";
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    
+    if (!isPasswordValid) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password is incorrect"
+      });
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // Update password
+    user.password = hashedPassword;
+    await user.save();
+
+    console.log("✅ Password updated successfully for user:", user.name);
+
+    res.json({
+      success: true,
+      message: "Password updated successfully"
+    });
+
+  } catch (error) {
+    console.error("❌ Password change error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error changing password: " + error.message
     });
   }
 });
