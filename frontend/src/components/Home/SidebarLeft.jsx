@@ -8,7 +8,6 @@ import {
   PlusCircle, 
   Settings, 
   User, 
-  Moon
 } from "lucide-react";
 
 const SidebarLeft = () => {
@@ -27,7 +26,7 @@ const SidebarLeft = () => {
     { label: "Create Post", icon: <PlusCircle size={20} />, path: "/create-post" },
     { label: "Profile", icon: <User size={20} />, path: "/profile" },
     { label: "Settings", icon: <Settings size={20} />, path: "/settings" },
-    { label: "Dark Mode", icon: <Moon size={20} />, path: "/theme" },
+  
   ];
 
   // Close dropdown when clicking outside
