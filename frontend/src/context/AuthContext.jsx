@@ -66,13 +66,22 @@ export const AuthProvider = ({ children }) => {
   };
 
   // UPDATE completeOnboarding function
-  const completeOnboarding = async (userData) => {
-    try {
-      // Send data to backend
-      const response = await updateProfile(userData);
-      
-      if (response.data.success) {
-        const updatedUser = response.data.user;
+// AuthContext.js - UPDATE completeOnboarding function
+const completeOnboarding = async (userData) => {
+  try {
+    console.log('🎯 [AuthContext] completeOnboarding called with:', userData);
+    
+    // Send data to backend
+    const response = await updateProfile(userData);
+    
+    console.log('✅ [AuthContext] Response from updateProfile:', response);
+    
+    // ✅ FIXED: response is already the data object, not response.data
+    if (response && response.success !== undefined) {
+      if (response.success) {
+        const updatedUser = response.user || response;
+        
+        console.log('✅ [AuthContext] Onboarding successful, user:', updatedUser);
         
         // Update local storage and state
         localStorage.setItem("trendzz_user", JSON.stringify(updatedUser));
@@ -80,13 +89,35 @@ export const AuthProvider = ({ children }) => {
         
         return updatedUser;
       } else {
-        throw new Error(response.data.message);
+        throw new Error(response.message || "Onboarding failed");
       }
-    } catch (error) {
-      console.error('Error in completeOnboarding:', error);
-      throw error;
+    } else {
+      // If success property is missing but we got a response
+      console.warn('⚠️ [AuthContext] Success property missing in response:', response);
+      
+      // Assume success if we have user data
+      if (response && (response._id || response.username)) {
+        console.log('⚠️ [AuthContext] Assuming success and updating user');
+        localStorage.setItem("trendzz_user", JSON.stringify(response));
+        setUserData(response);
+        return response;
+      } else {
+        throw new Error("Invalid response from server");
+      }
     }
-  };
+  } catch (error) {
+    console.error('❌ [AuthContext] Error in completeOnboarding:', error);
+    
+    // Create proper error object
+    const errorObj = {
+      message: error.message || "Failed to complete onboarding",
+      response: error.response || error,
+      success: false
+    };
+    
+    throw errorObj;
+  }
+};
 
   return (
     <AuthContext.Provider value={{

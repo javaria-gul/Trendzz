@@ -1,5 +1,3 @@
-// SidebarLeft.jsx
-
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { 
@@ -14,6 +12,7 @@ import {
   X
 } from "lucide-react";
 import { searchUsers } from "../../services/user";
+import CreatePostModal from './CreatePostModal'; // ✅ CORRECT IMPORT
 
 const SidebarLeft = () => {
   const navigate = useNavigate();
@@ -23,14 +22,21 @@ const SidebarLeft = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [showCreatePostModal, setShowCreatePostModal] = useState(false); // ✅ RENAMED for clarity
   const dropdownRef = useRef(null);
 
+  // ✅ UPDATED MENU ARRAY
   const menu = [
     { label: "Home", icon: <Home size={20} />, path: "/" },
     { label: "Chat", icon: <MessageCircle size={20} />, path: "/chat" },
     { label: "Notifications", icon: <Bell size={20} />, path: "#" },
     { label: "Search", icon: <Search size={20} />, path: "#" },
-    { label: "Create Post", icon: <PlusCircle size={20} />, path: "/create-post" },
+    { 
+      label: "Create Post", 
+      icon: <PlusCircle size={20} />, 
+      path: "#",
+      onClick: () => setShowCreatePostModal(true) // ✅ CORRECT FUNCTION
+    },
     { label: "Profile", icon: <User size={20} />, path: "/profile" },
     { label: "Settings", icon: <Settings size={20} />, path: "/settings" },
     { label: "Dark Mode", icon: <Moon size={20} />, path: "/theme" },
@@ -50,7 +56,7 @@ const SidebarLeft = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Search users function - PROPERLY WORKING
+  // Search users function
   useEffect(() => {
     const performSearch = async () => {
       if (searchQuery.length < 2) {
@@ -90,12 +96,15 @@ const SidebarLeft = () => {
     setNotifications(mockNotifications);
   }, []);
 
-  const handleNavigation = (path, label) => {
+  // ✅ UPDATED HANDLE NAVIGATION FUNCTION
+  const handleNavigation = (path, label, onClick) => {
     if (path === "#") {
       if (label === "Search") {
         setActiveDropdown(activeDropdown === 'search' ? null : 'search');
       } else if (label === "Notifications") {
         setActiveDropdown(activeDropdown === 'notifications' ? null : 'notifications');
+      } else if (label === "Create Post" && onClick) {
+        onClick(); // ✅ CREATE POST MODAL OPEN
       }
       return;
     }
@@ -122,7 +131,7 @@ const SidebarLeft = () => {
     }
   };
 
-  // Dropdown position - Top pe khulega
+  // Dropdown position
   const getDropdownPosition = () => {
     return "left-16 top-4";
   };
@@ -269,46 +278,60 @@ const SidebarLeft = () => {
   );
 
   return (
-    <div className="hidden md:flex flex-col items-center py-6 h-[calc(100vh-30px)] fixed left-2 top-4 bottom-4 w-16 bg-blue-900 shadow-2xl rounded-3xl border border-blue-700 z-40">
-      <ul className="flex flex-col items-center space-y-3 mt-2">
-        {menu.map((item, index) => (
-          <li
-            key={index}
-            className={`
-              group
-              w-10 h-10 
-              flex items-center justify-center 
-              rounded-xl 
-              transition-all cursor-pointer relative
-              ${location.pathname === item.path 
-                ? 'bg-yellow-400 text-gray-900' 
-                : 'text-white hover:bg-yellow-400 hover:text-gray-900'
-              }
-              ${(item.label === "Search" && activeDropdown === 'search') || 
-                (item.label === "Notifications" && activeDropdown === 'notifications')
-                ? 'bg-yellow-400 text-gray-900' 
-                : ''
-              }
-            `}
-            title={item.label}
-            onClick={() => handleNavigation(item.path, item.label)}
-          >
-            {item.icon}
-            
-            {/* Notification Badge */}
-            {item.label === "Notifications" && notifications.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                {notifications.length}
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
+    // ✅ WRAPPED IN FRAGMENT
+    <>
+      <div className="hidden md:flex flex-col items-center py-6 h-[calc(100vh-30px)] fixed left-2 top-4 bottom-4 w-16 bg-blue-900 shadow-2xl rounded-3xl border border-blue-700 z-40">
+        <ul className="flex flex-col items-center space-y-3 mt-2">
+          {menu.map((item, index) => (
+            <li
+              key={index}
+              className={`
+                group
+                w-10 h-10 
+                flex items-center justify-center 
+                rounded-xl 
+                transition-all cursor-pointer relative
+                ${location.pathname === item.path 
+                  ? 'bg-yellow-400 text-gray-900' 
+                  : 'text-white hover:bg-yellow-400 hover:text-gray-900'
+                }
+                ${(item.label === "Search" && activeDropdown === 'search') || 
+                  (item.label === "Notifications" && activeDropdown === 'notifications')
+                  ? 'bg-yellow-400 text-gray-900' 
+                  : ''
+                }
+              `}
+              title={item.label}
+              onClick={() => handleNavigation(item.path, item.label, item.onClick)}
+            >
+              {item.icon}
+              
+              {/* Notification Badge */}
+              {item.label === "Notifications" && notifications.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                  {notifications.length}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
 
-      {/* Dropdowns */}
-      {activeDropdown === 'search' && renderSearchDropdown()}
-      {activeDropdown === 'notifications' && renderNotificationsDropdown()}
-    </div>
+        {/* Dropdowns */}
+        {activeDropdown === 'search' && renderSearchDropdown()}
+        {activeDropdown === 'notifications' && renderNotificationsDropdown()}
+      </div>
+
+      {/* ✅ CREATE POST MODAL - USING CreatePostModal COMPONENT */}
+      {showCreatePostModal && (
+        <CreatePostModal
+          onClose={() => setShowCreatePostModal(false)}
+          onPostCreated={() => {
+            // You can add refresh logic here
+            alert('Post created successfully!');
+          }}
+        />
+      )}
+    </>
   );
 };
 

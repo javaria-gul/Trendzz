@@ -7,13 +7,14 @@ import { AuthProvider, AuthContext } from "./context/AuthContext";
 import { SocketProvider } from './context/SocketContext';
 import Onboarding from "./pages/Onboarding";
 import Profile from './pages/Profile';
-import Feed from './pages/Feed';
+import Feed from "./pages/Feed";
 import Settings from './pages/Settings';
 import OtherUserProfile from './pages/OtherUserProfile';
 import Search from './pages/Search';
 import ChatLayout from "./components/ChatLayout";
 import ChatWindow from "./components/ChatWindow";
 import ChatEmptyState from "./components/ChatEmptyState";
+
 
 // Simple Protected Route
 const ProtectedRoute = ({ children }) => {
@@ -60,9 +61,10 @@ function App() {
               </ProtectedRoute>
             }>
               {/* Nested routes - these will show in HomeLayout's main area */}
-              <Route index element={<Feed />} /> {/* Default feed */}
-              <Route path="profile" element={<Profile />} /> {/* Profile page */}
-              <Route path="create-post" element={<div>Create Post Page</div>} /> {/* Create post page */}
+              <Route index element={<Feed />} /> {/* ✅ CHANGE: Feed to HomeFeed */}
+              <Route path="profile" element={<Profile />} />
+              <Route path="feed" element={<Feed />} /> {/* ✅ ADD: Feed route */}
+              <Route path="create-post" element={<div>Create Post Page</div>} />
             </Route>
             
             <Route path="/settings" element={
