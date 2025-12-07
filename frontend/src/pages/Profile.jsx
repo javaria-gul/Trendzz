@@ -293,74 +293,93 @@ const Profile = () => {
     setIsUsernameAvailable(null);
   };
 
-  // Handle follow/unfollow in modals
-  const handleFollowInModal = async (userId, isCurrentlyFollowing, e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
+// KEEP this one (around line 361) and REMOVE the duplicate inside FollowingModal
 
-    if (!userData) {
-      alert('Please login to follow users');
-      return;
-    }
+// Handle follow/unfollow in modals - UPDATED VERSION
+const handleFollowInModal = async (userId, isCurrentlyFollowing, e) => {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
 
-    setFollowLoading(prev => ({ ...prev, [userId]: true }));
+  if (!userData) {
+    alert('Please login to follow users');
+    return;
+  }
 
-    try {
-      const response = await followUser(userId);
-      
-      if (response.data.success) {
-        // Update following users list
-        setFollowingUsers(prev => 
-          prev.map(user => {
-            if (user._id === userId) {
-              return {
-                ...user,
-                isFollowing: response.data.isFollowing
-              };
-            }
-            return user;
-          })
-        );
+  setFollowLoading(prev => ({ ...prev, [userId]: true }));
 
-        // Update followers list
-        setFollowerUsers(prev => 
-          prev.map(user => {
-            if (user._id === userId) {
-              return {
-                ...user,
-                isFollowing: response.data.isFollowing
-              };
-            }
-            return user;
-          })
-        );
+  try {
+    const response = await followUser(userId);
+    
+    if (response.data.success) {
+      // Update following users list
+      setFollowingUsers(prev => 
+        prev.map(user => {
+          if (user._id === userId) {
+            return {
+              ...user,
+              isFollowing: response.data.isFollowing
+            };
+          }
+          return user;
+        })
+      );
 
-        // Update global user data
-        if (updateUserData) {
-          const updatedFollowing = response.data.isFollowing 
-            ? [...(userData.following || []), userId]
-            : userData.following.filter(id => (id._id || id) !== userId);
-          
-          updateUserData({
-            ...userData,
-            following: updatedFollowing
-          });
+      // Update followers list
+      setFollowerUsers(prev => 
+        prev.map(user => {
+          if (user._id === userId) {
+            return {
+              ...user,
+              isFollowing: response.data.isFollowing
+            };
+          }
+          return user;
+        })
+      );
+
+      // Update global user data WITH FOLLOWING COUNT
+      if (updateUserData) {
+        // Calculate new following count
+        const currentFollowing = userData.following || [];
+        let newFollowingCount = userData.followingCount || currentFollowing.length;
+        
+        if (response.data.isFollowing) {
+          // Follow action
+          newFollowingCount += 1;
+        } else {
+          // Unfollow action  
+          newFollowingCount = Math.max(0, newFollowingCount - 1);
         }
-
-        console.log(response.data.isFollowing ? 'Followed successfully' : 'Unfollowed successfully');
-      } else {
-        alert(response.data.message || 'Failed to follow user');
+        
+        // Get updated following array
+        const updatedFollowing = response.data.isFollowing 
+          ? [...currentFollowing, userId]
+          : currentFollowing.filter(id => {
+              const followingId = typeof id === 'object' ? id._id : id;
+              return followingId?.toString() !== userId.toString();
+            });
+        
+        updateUserData({
+          ...userData,
+          following: updatedFollowing,
+          followingCount: newFollowingCount
+        });
       }
-    } catch (error) {
-      console.error('Error following user:', error);
-      const errorMessage = error.response?.data?.message || 'Failed to follow user';
-      alert(errorMessage);
-    } finally {
-      setFollowLoading(prev => ({ ...prev, [userId]: false }));
+
+      console.log(response.data.isFollowing ? 'Followed successfully' : 'Unfollowed successfully');
+    } else {
+      alert(response.data.message || 'Failed to follow user');
     }
-  };
+  } catch (error) {
+    console.error('Error following user:', error);
+    const errorMessage = error.response?.data?.message || 'Failed to follow user';
+    alert(errorMessage);
+  } finally {
+    setFollowLoading(prev => ({ ...prev, [userId]: false }));
+  }
+};
 
   // Followers Modal Component
 // Improved Followers Modal Component
@@ -511,7 +530,7 @@ const FollowersModal = () => {
 const FollowingModal = () => {
   const [localFollowing, setLocalFollowing] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [followLoading, setFollowLoading] = useState({});
+  // const [followLoading, setFollowLoading] = useState({});
 
   // Fetch following users with proper data
   useEffect(() => {
@@ -561,64 +580,7 @@ const FollowingModal = () => {
     if (showFollowingModal) {
       fetchFollowingUsers();
     }
-  }, [showFollowingModal, userData._id, followingUsers]);
-
-  const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    if (!userData) {
-      alert('Please login to follow users');
-      return;
-    }
-
-    setFollowLoading(prev => ({ ...prev, [followingUserId]: true }));
-
-    try {
-      const response = await followUser(followingUserId);
-      
-      if (response.data.success) {
-        setLocalFollowing(prev => 
-          prev.map(followingUser => {
-            if (followingUser._id === followingUserId) {
-              return {
-                ...followingUser,
-                isFollowing: response.data.isFollowing
-              };
-            }
-            return followingUser;
-          })
-        );
-
-        // Update global state
-        if (updateUserData) {
-          const updatedFollowing = response.data.isFollowing 
-            ? [...(userData.following || []), followingUserId]
-            : userData.following.filter(id => {
-                const followingId = typeof id === 'object' ? id._id : id;
-                return followingId.toString() !== followingUserId.toString();
-              });
-          
-          updateUserData({
-            ...userData,
-            following: updatedFollowing
-          });
-        }
-
-        console.log(response.data.isFollowing ? 'Followed successfully' : 'Unfollowed successfully');
-      } else {
-        alert(response.data.message || 'Failed to follow user');
-      }
-    } catch (error) {
-      console.error('Error following user:', error);
-      const errorMessage = error.response?.data?.message || 'Failed to follow user';
-      alert(errorMessage);
-    } finally {
-      setFollowLoading(prev => ({ ...prev, [followingUserId]: false }));
-    }
-  };
+  }, [showFollowingModal]);
 
   // Get actual count
   const actualCount = localFollowing.length;
@@ -704,7 +666,7 @@ const FollowingModal = () => {
                       disabled={followLoading[followingUser._id]}
                       className={`px-3 py-1 text-xs rounded-lg transition font-medium ${
                         followingUser.isFollowing 
-                          ? 'bg-gray-500 text-white hover:bg-gray-600' 
+                          ? 'bg-red-700 text-white hover:bg-red-700' 
                           : 'bg-red-700 text-white hover:bg-blue-900'
                       } ${followLoading[followingUser._id] ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
@@ -749,7 +711,8 @@ const FollowingModal = () => {
   const bioCharsCount = editForm.bio ? editForm.bio.length : 0;
   const maxChars = 60;
   const followersCount = followerUsers.length || 0;
-  const followingCount = followingUsers.length || 0;
+  // Around line 700, update followingCount:
+const followingCount = userData?.followingCount || userData?.following?.length || 0;
 
   return (
     <div className="min-h-screen bg-gray-50 py-4 sm:py-6">

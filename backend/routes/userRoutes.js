@@ -1,6 +1,6 @@
 import express from "express";
 import User from "../models/User.js";
-import bcrypt from "bcryptjs"; // ADD THIS LINE
+import bcrypt from "bcryptjs";
 import requireAuth from "../middleware/authMiddleware.js";
 import { 
   updatePrivacySettings, 
@@ -9,9 +9,243 @@ import {
   getFollowingList,
   getFollowersList
 } from "../controllers/userController.js";
+
 const router = express.Router();
 
-// ADD THIS ROUTE - Simple user details (for blocked users list)
+// In userRoutes.js - UPDATE the /recommendations route with improved logic:
+
+router.get('/recommendations', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = req.user._id;
+    
+    console.log("🧠 ML Recommendations requested by user:", currentUserId);
+
+    // Get current user with following list
+    const currentUser = await User.findById(currentUserId)
+      .select('name role batch semester department interests skills following');
+    
+    if (!currentUser) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+
+    console.log("👤 Current user:", currentUser.name, "Role:", currentUser.role);
+
+    // Get users not already followed and not blocked
+    const allUsers = await User.find({ 
+      _id: { $ne: currentUserId },
+      _id: { $nin: currentUser.following || [] },
+
+    })
+    .select('name username avatar batch semester department role interests skills')
+    .limit(100); // Limit for performance
+
+    console.log("📊 Potential users for recommendations:", allUsers.length);
+
+    // Enhanced ML Algorithm
+    const getMLSuggestions = (users, currentUser) => {
+      const getUserFeatures = (user) => {
+        return {
+          batch: user.batch || '',
+          semester: user.semester || 0,
+          department: user.department || '',
+          role: user.role || 'student',
+          interests: user.interests || [],
+          skills: user.skills || []
+        };
+      };
+
+      const currentUserFeatures = getUserFeatures(currentUser);
+      
+      const calculateSimilarity = (user1Features, user2Features) => {
+        let score = 0;
+        let maxScore = 0;
+
+        // 1. Batch matching - HIGH PRIORITY
+        if (user1Features.batch && user2Features.batch) {
+          if (user1Features.batch === user2Features.batch) {
+            score += 40;
+            maxScore += 40;
+          }
+        }
+
+        // 2. Semester matching - HIGH PRIORITY
+        if (user1Features.semester && user2Features.semester) {
+          const semesterDiff = Math.abs(user1Features.semester - user2Features.semester);
+          if (semesterDiff === 0) {
+            score += 30;
+          } else if (semesterDiff === 1) {
+            score += 20;
+          } else if (semesterDiff === 2) {
+            score += 10;
+          }
+          maxScore += 30;
+        }
+
+        // 3. Department matching - MEDIUM PRIORITY
+        if (user1Features.department && user2Features.department) {
+          if (user1Features.department === user2Features.department) {
+            score += 15;
+          }
+          maxScore += 15;
+        }
+
+        // 4. Role-based logic
+        if (currentUser.role === 'student') {
+          // Students see more students
+          if (user2Features.role === 'student') {
+            score += 10;
+          }
+          maxScore += 10;
+        } else if (currentUser.role === 'faculty') {
+          // Faculty see more faculty
+          if (user2Features.role === 'faculty') {
+            score += 25;
+          }
+          maxScore += 25;
+        }
+
+        // 5. Interests matching
+        if (user1Features.interests.length > 0 && user2Features.interests.length > 0) {
+          const set1 = new Set(user1Features.interests.map(i => i.toLowerCase()));
+          const set2 = new Set(user2Features.interests.map(i => i.toLowerCase()));
+          const intersection = new Set([...set1].filter(x => set2.has(x)));
+          const union = new Set([...set1, ...set2]);
+          
+          if (union.size > 0) {
+            const jaccardScore = (intersection.size / union.size) * 15;
+            score += jaccardScore;
+          }
+        }
+        maxScore += 15;
+
+        return maxScore > 0 ? (score / maxScore) * 100 : 0;
+      };
+
+      // Calculate scores for all users
+      const usersWithScores = users.map(user => {
+        const userFeatures = getUserFeatures(user);
+        const similarityScore = calculateSimilarity(currentUserFeatures, userFeatures);
+        
+        return {
+          _id: user._id,
+          name: user.name,
+          username: user.username,
+          avatar: user.avatar || '/avatars/avatar1.png',
+          batch: user.batch,
+          semester: user.semester,
+          department: user.department,
+          role: user.role,
+          similarityScore: Math.round(similarityScore * 10) / 10, // Round to 1 decimal
+          reason: getRecommendationReason(currentUserFeatures, getUserFeatures(user), similarityScore)
+        };
+      });
+
+      // Filter and sort
+      return usersWithScores
+        .filter(user => user.similarityScore > 25) // Lower threshold to show more
+        .sort((a, b) => b.similarityScore - a.similarityScore)
+        .slice(0, 6); // Top 6
+    };
+
+    // Improved recommendation reason
+    const getRecommendationReason = (currentUser, suggestedUser, score) => {
+      const reasons = [];
+      
+      if (currentUser.batch === suggestedUser.batch && currentUser.batch) {
+        reasons.push(`Batch ${currentUser.batch}`);
+      }
+      
+      if (currentUser.semester === suggestedUser.semester && currentUser.semester) {
+        reasons.push(`Semester ${currentUser.semester}`);
+      }
+      
+      if (currentUser.department === suggestedUser.department && currentUser.department) {
+        reasons.push(`${currentUser.department} Dept`);
+      }
+      
+      if (currentUser.role === 'student' && suggestedUser.role === 'student') {
+        reasons.push('Fellow Student');
+      } else if (currentUser.role === 'faculty' && suggestedUser.role === 'faculty') {
+        reasons.push('Faculty Colleague');
+      }
+      
+      if (reasons.length > 0) {
+        return reasons.join(' • ');
+      }
+      
+      return score > 50 ? 'Similar interests' : 'You might know';
+    };
+
+    // Generate recommendations
+    const recommendations = getMLSuggestions(allUsers, currentUser);
+
+    console.log("🎯 ML Recommendations generated:", recommendations.length);
+
+    res.status(200).json({
+      success: true,
+      data: recommendations,
+      algorithm: "Enhanced Content-Based Filtering",
+      weights: {
+        batch: "40%",
+        semester: "30%",
+        department: "15%",
+        role: currentUser.role === 'student' ? "10%" : "25%",
+        interests: "15%"
+      },
+      threshold: "25% similarity",
+      totalUsersConsidered: allUsers.length,
+      recommendationsCount: recommendations.length,
+      currentUser: {
+        role: currentUser.role,
+        batch: currentUser.batch,
+        semester: currentUser.semester,
+        department: currentUser.department
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ ML Recommendation Error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error in ML recommendations',
+      error: error.message 
+    });
+  }
+});
+
+// ✅ FIXED: Get all users (for fallback)
+router.get('/all', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = req.user._id;
+    
+    const users = await User.find({ 
+      _id: { $ne: currentUserId },
+    })
+    .select('name username avatar batch semester department role interests skills')
+    .limit(50)
+    .lean();
+
+    res.status(200).json({
+      success: true,
+      data: users,
+      count: users.length
+    });
+
+  } catch (error) {
+    console.error('❌ Get all users error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error fetching users',
+      error: error.message 
+    });
+  }
+});
+
+// Rest of your existing routes remain the same...
+// Simple user details
 router.get("/simple/:userId", requireAuth, async (req, res) => {
   try {
     const userId = req.params.userId;
@@ -41,15 +275,22 @@ router.get("/simple/:userId", requireAuth, async (req, res) => {
   }
 });
 
-// Add these routes
+// Get following list
 router.get('/following/:userId', requireAuth, getFollowingList);
+
+// Get followers list
 router.get('/followers/:userId', requireAuth, getFollowersList);
+
+// Update privacy settings
 router.put('/update-privacy', requireAuth, updatePrivacySettings);
+
+// Debug privacy
 router.get('/debug-privacy', requireAuth, debugPrivacySettings);
+
 // Alternative privacy route
 router.put('/privacy', requireAuth, updateUserPrivacy);
 
-// Test route to check if privacy endpoint works
+// Test privacy endpoint
 router.get('/test-privacy', requireAuth, (req, res) => {
   res.json({ 
     success: true, 
@@ -58,7 +299,7 @@ router.get('/test-privacy', requireAuth, (req, res) => {
   });
 });
 
-// Email update endpoint - ADDED CORRECTLY (ONLY ONCE)
+// Email update
 router.put("/update-email", requireAuth, async (req, res) => {
   try {
     const { email } = req.body;
@@ -66,7 +307,6 @@ router.put("/update-email", requireAuth, async (req, res) => {
 
     console.log("📧 Email update request - User:", userId, "New email:", email);
 
-    // Validate email
     if (!email || !email.includes('@')) {
       return res.status(400).json({
         success: false,
@@ -74,7 +314,6 @@ router.put("/update-email", requireAuth, async (req, res) => {
       });
     }
 
-    // Check if email is different from current
     const currentUser = await User.findById(userId);
     if (currentUser.email === email) {
       return res.status(400).json({
@@ -83,7 +322,6 @@ router.put("/update-email", requireAuth, async (req, res) => {
       });
     }
 
-    // Check if email already exists for another user
     const existingUser = await User.findOne({ email: email });
     if (existingUser && existingUser._id.toString() !== userId.toString()) {
       return res.status(400).json({
@@ -92,12 +330,11 @@ router.put("/update-email", requireAuth, async (req, res) => {
       });
     }
 
-    // Update email in database
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { 
         email: email,
-        isEmailVerified: false // Reset verification when email changes
+        isEmailVerified: false
       },
       { new: true }
     ).select("name email username avatar role semester batch privacySettings blockedUsers following followers createdAt updatedAt");
@@ -119,7 +356,7 @@ router.put("/update-email", requireAuth, async (req, res) => {
   }
 });
 
-// Add this test route to verify email endpoint
+// Test email endpoint
 router.put("/test-email", requireAuth, async (req, res) => {
   try {
     const { email } = req.body;
@@ -128,7 +365,6 @@ router.put("/test-email", requireAuth, async (req, res) => {
     console.log("🧪 Current email:", req.user.email);
     console.log("🧪 New email:", email);
     
-    // Just return success without updating
     res.json({
       success: true,
       message: "Test endpoint works!",
@@ -212,7 +448,7 @@ router.get("/search", requireAuth, async (req, res) => {
   }
 });
 
-// Get user profile by ID - FIXED BLOCK CHECK
+// Get user profile by ID
 router.get("/profile/:userId", requireAuth, async (req, res) => {
   try {
     const targetUserId = req.params.userId;
@@ -220,7 +456,6 @@ router.get("/profile/:userId", requireAuth, async (req, res) => {
 
     console.log("🔍 Fetching profile for:", targetUserId, "by user:", currentUserId);
     
-    // Check if current user has blocked this user
     const currentUser = await User.findById(currentUserId);
     if (currentUser.blockedUsers && currentUser.blockedUsers.includes(targetUserId)) {
       console.log("🚫 User is blocked, returning limited profile");
@@ -289,15 +524,11 @@ router.get("/profile/:userId", requireAuth, async (req, res) => {
       console.error("Population error:", populateError);
     }
 
-    // Check if current user is following this user
     const isFollowing = currentUser.following && currentUser.following.includes(targetUserId);
-
-    // Check if current user has admired this user
     const hasAdmired = user.admirers && user.admirers.includes(currentUserId);
 
     console.log("📊 Profile stats - Following:", isFollowing, "Admired:", hasAdmired);
 
-    // Build response
     const responseData = {
       _id: user._id,
       name: user.name,
@@ -341,7 +572,7 @@ router.get("/profile/:userId", requireAuth, async (req, res) => {
   }
 });
 
-// DEBUG: Test profile update
+// Test profile update
 router.put("/test-update", requireAuth, async (req, res) => {
   try {
     console.log("🔵 TEST - Request body:", req.body);
@@ -419,7 +650,6 @@ router.post("/follow/:userId", requireAuth, async (req, res) => {
       });
     }
 
-    // Get updated target user with populated followers
     const updatedTargetUser = await User.findById(targetUserId)
       .populate('followers', 'name username avatar');
 
@@ -494,7 +724,7 @@ router.post("/admire/:userId", requireAuth, async (req, res) => {
   }
 });
 
-// Block user - FIXED VERSION
+// Block user
 router.post("/block/:userId", requireAuth, async (req, res) => {
   try {
     const targetUserId = req.params.userId;
@@ -509,7 +739,6 @@ router.post("/block/:userId", requireAuth, async (req, res) => {
       });
     }
 
-    // Check if user exists
     const targetUser = await User.findById(targetUserId);
     if (!targetUser) {
       return res.status(404).json({
@@ -518,7 +747,6 @@ router.post("/block/:userId", requireAuth, async (req, res) => {
       });
     }
 
-    // Check if already blocked
     const currentUser = await User.findById(currentUserId);
     if (currentUser.blockedUsers && currentUser.blockedUsers.includes(targetUserId)) {
       return res.status(400).json({
@@ -527,7 +755,6 @@ router.post("/block/:userId", requireAuth, async (req, res) => {
       });
     }
 
-    // Add to blocked users and remove from followers/following
     await User.findByIdAndUpdate(currentUserId, {
       $addToSet: { blockedUsers: targetUserId },
       $pull: { 
@@ -536,7 +763,6 @@ router.post("/block/:userId", requireAuth, async (req, res) => {
       }
     });
 
-    // Remove current user from target user's followers/following
     await User.findByIdAndUpdate(targetUserId, {
       $pull: { 
         followers: currentUserId,
@@ -560,7 +786,7 @@ router.post("/block/:userId", requireAuth, async (req, res) => {
   }
 });
 
-// UNBLOCK USER - ENHANCED WITH DEBUG LOGGING
+// Unblock user
 router.post("/unblock/:userId", requireAuth, async (req, res) => {
   try {
     const targetUserId = req.params.userId;
@@ -575,7 +801,6 @@ router.post("/unblock/:userId", requireAuth, async (req, res) => {
       });
     }
 
-    // Check if user exists
     const targetUser = await User.findById(targetUserId);
     if (!targetUser) {
       console.log("❌ Target user not found:", targetUserId);
@@ -585,7 +810,6 @@ router.post("/unblock/:userId", requireAuth, async (req, res) => {
       });
     }
 
-    // Check if user is actually blocked
     const currentUser = await User.findById(currentUserId);
     
     if (!currentUser.blockedUsers || !currentUser.blockedUsers.includes(targetUserId)) {
@@ -596,7 +820,6 @@ router.post("/unblock/:userId", requireAuth, async (req, res) => {
       });
     }
 
-    // Remove from blocked users
     const updatedUser = await User.findByIdAndUpdate(
       currentUserId,
       { $pull: { blockedUsers: targetUserId } },
@@ -619,7 +842,7 @@ router.post("/unblock/:userId", requireAuth, async (req, res) => {
   }
 });
 
-// Add this temporary debug route to test routing
+// Debug test route
 router.get("/debug-test", requireAuth, (req, res) => {
   res.json({ 
     success: true, 
@@ -628,7 +851,7 @@ router.get("/debug-test", requireAuth, (req, res) => {
   });
 });
 
-// DEBUG: Get all users for testing
+// Get all users for testing
 router.get("/debug/all-users", requireAuth, async (req, res) => {
   try {
     const allUsers = await User.find({})
@@ -684,7 +907,7 @@ router.get("/suggested-users", requireAuth, async (req, res) => {
   }
 });
 
-// Change password endpoint
+// Change password
 router.put("/change-password", requireAuth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -692,7 +915,6 @@ router.put("/change-password", requireAuth, async (req, res) => {
 
     console.log("🔑 Password change request - User:", userId);
 
-    // Validate input
     if (!currentPassword || !newPassword) {
       return res.status(400).json({
         success: false,
@@ -707,7 +929,6 @@ router.put("/change-password", requireAuth, async (req, res) => {
       });
     }
 
-    // Get user with password
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({
@@ -716,9 +937,6 @@ router.put("/change-password", requireAuth, async (req, res) => {
       });
     }
 
-    // Verify current password
-    // IMPORTANT: You need to import bcrypt at the top of your file
-    // Add: import bcrypt from "bcryptjs";
     const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
     
     if (!isPasswordValid) {
@@ -728,11 +946,9 @@ router.put("/change-password", requireAuth, async (req, res) => {
       });
     }
 
-    // Hash new password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    // Update password
     user.password = hashedPassword;
     await user.save();
 

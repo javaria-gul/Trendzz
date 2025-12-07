@@ -3,8 +3,6 @@ import SearchComponent from '../components/Search/SearchComponent';
 
 const Search = () => {
   return (
-    // REMOVE: items-center justify-center - Yeh center kar raha tha
-    // ADD: pt-4 for top padding only
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 px-4 py-4">
       <div className="w-full max-w-3xl mx-auto">
         {/* Search Card - Remove extra top margin */}

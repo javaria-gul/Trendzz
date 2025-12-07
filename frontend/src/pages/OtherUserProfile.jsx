@@ -105,52 +105,70 @@ const OtherUserProfile = () => {
   }, [userId, checkIfBlocked]);
 
   // Follow functionality
-  const handleFollow = async (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
+// Follow functionality - UPDATED VERSION
+const handleFollow = async (e) => {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
 
-    if (!currentUser) {
-      alert('Please login to follow users');
-      return;
-    }
+  if (!currentUser) {
+    alert('Please login to follow users');
+    return;
+  }
 
-    setIsFollowLoading(true);
-    try {
-      const response = await followUser(userId);
+  setIsFollowLoading(true);
+  try {
+    const response = await followUser(userId);
+    
+    if (response.data.success) {
+      setIsFollowing(response.data.isFollowing);
       
-      if (response.data.success) {
-        setIsFollowing(response.data.isFollowing);
+      setUserProfile(prev => ({
+        ...prev,
+        followersCount: response.data.followersCount || prev.followersCount
+      }));
+
+      // UPDATE: Also update the current user's following count
+      if (currentUser && updateUserData) {
+        const currentFollowing = currentUser.following || [];
+        let updatedFollowing;
+        let followingCount = currentUser.followingCount || currentFollowing.length;
         
-        setUserProfile(prev => ({
-          ...prev,
-          followersCount: response.data.followersCount || prev.followersCount
-        }));
-
-        if (currentUser && updateUserData) {
-          const updatedFollowing = response.data.isFollowing 
-            ? [...(currentUser.following || []), userId]
-            : currentUser.following.filter(id => id !== userId);
-          
-          updateUserData({
-            ...currentUser,
-            following: updatedFollowing
+        if (response.data.isFollowing) {
+          // Follow action - add to array
+          updatedFollowing = [...currentFollowing, userId];
+          followingCount += 1;
+        } else {
+          // Unfollow action - remove from array
+          updatedFollowing = currentFollowing.filter(id => {
+            const followingId = typeof id === 'object' ? id._id : id;
+            return followingId?.toString() !== userId.toString();
           });
+          followingCount = Math.max(0, followingCount - 1);
         }
-
-        console.log(response.data.message);
-      } else {
-        alert(response.data.message || 'Failed to follow user');
+        
+        updateUserData({
+          ...currentUser,
+          following: updatedFollowing,
+          followingCount: followingCount
+        });
+        
+        console.log('✅ Updated current user following count:', followingCount);
       }
-    } catch (error) {
-      console.error('Error following user:', error);
-      const errorMessage = error.response?.data?.message || 'Failed to follow user';
-      alert(errorMessage);
-    } finally {
-      setIsFollowLoading(false);
+
+      console.log(response.data.message);
+    } else {
+      alert(response.data.message || 'Failed to follow user');
     }
-  };
+  } catch (error) {
+    console.error('Error following user:', error);
+    const errorMessage = error.response?.data?.message || 'Failed to follow user';
+    alert(errorMessage);
+  } finally {
+    setIsFollowLoading(false);
+  }
+};
 
   // Enhanced Block functionality
   const handleBlockUser = async (e) => {
@@ -536,60 +554,75 @@ const handleViewPosts = (e) => {
     const [followLoading, setFollowLoading] = useState({});
 
     // Handle follow/unfollow for a specific user
-    const handleFollowInModal = async (followerId, isCurrentlyFollowing, e) => {
-      if (e) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+// In FollowersModal component (around line 320):
+const handleFollowInModal = async (followerId, isCurrentlyFollowing, e) => {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
 
-      if (!currentUser) {
-        alert('Please login to follow users');
-        return;
-      }
+  if (!currentUser) {
+    alert('Please login to follow users');
+    return;
+  }
 
-      setFollowLoading(prev => ({ ...prev, [followerId]: true }));
+  setFollowLoading(prev => ({ ...prev, [followerId]: true }));
 
-      try {
-        const response = await followUser(followerId);
-        
-        if (response.data.success) {
-          // Update the local state to reflect the change
-          setLocalFollowers(prev => 
-            prev.map(follower => {
-              if (follower._id === followerId) {
-                return {
-                  ...follower,
-                  isFollowing: response.data.isFollowing
-                };
-              }
-              return follower;
-            })
-          );
-
-          // Update global state if needed
-          if (currentUser && updateUserData) {
-            const updatedFollowing = response.data.isFollowing 
-              ? [...(currentUser.following || []), followerId]
-              : currentUser.following.filter(id => id !== followerId);
-            
-            updateUserData({
-              ...currentUser,
-              following: updatedFollowing
-            });
+  try {
+    const response = await followUser(followerId);
+    
+    if (response.data.success) {
+      // Update the local state to reflect the change
+      setLocalFollowers(prev => 
+        prev.map(follower => {
+          if (follower._id === followerId) {
+            return {
+              ...follower,
+              isFollowing: response.data.isFollowing
+            };
           }
+          return follower;
+        })
+      );
 
-          console.log(response.data.isFollowing ? 'Followed successfully' : 'Unfollowed successfully');
+      // UPDATE: Update current user's following count
+      if (currentUser && updateUserData) {
+        const currentFollowing = currentUser.following || [];
+        let updatedFollowing;
+        let followingCount = currentUser.followingCount || currentFollowing.length;
+        
+        if (response.data.isFollowing) {
+          // Follow action
+          updatedFollowing = [...currentFollowing, followerId];
+          followingCount += 1;
         } else {
-          alert(response.data.message || 'Failed to follow user');
+          // Unfollow action
+          updatedFollowing = currentFollowing.filter(id => {
+            const followingId = typeof id === 'object' ? id._id : id;
+            return followingId?.toString() !== followerId.toString();
+          });
+          followingCount = Math.max(0, followingCount - 1);
         }
-      } catch (error) {
-        console.error('Error following user:', error);
-        const errorMessage = error.response?.data?.message || 'Failed to follow user';
-        alert(errorMessage);
-      } finally {
-        setFollowLoading(prev => ({ ...prev, [followerId]: false }));
+        
+        updateUserData({
+          ...currentUser,
+          following: updatedFollowing,
+          followingCount: followingCount
+        });
       }
-    };
+
+      console.log(response.data.isFollowing ? 'Followed successfully' : 'Unfollowed successfully');
+    } else {
+      alert(response.data.message || 'Failed to follow user');
+    }
+  } catch (error) {
+    console.error('Error following user:', error);
+    const errorMessage = error.response?.data?.message || 'Failed to follow user';
+    alert(errorMessage);
+  } finally {
+    setFollowLoading(prev => ({ ...prev, [followerId]: false }));
+  }
+};
 
     const handleCloseModal = (e) => {
       if (e) {
@@ -750,61 +783,73 @@ const handleViewPosts = (e) => {
     const [followLoading, setFollowLoading] = useState({});
 
     // Handle follow/unfollow for a specific user
-    const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => {
-      if (e) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+// In FollowingModal component (around line 475):
+const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
 
-      if (!currentUser) {
-        alert('Please login to follow users');
-        return;
-      }
+  if (!currentUser) {
+    alert('Please login to follow users');
+    return;
+  }
 
-      setFollowLoading(prev => ({ ...prev, [followingUserId]: true }));
+  setFollowLoading(prev => ({ ...prev, [followingUserId]: true }));
 
-      try {
-        const response = await followUser(followingUserId);
-        
-        if (response.data.success) {
-          // Update the local state to reflect the change
-          setLocalFollowing(prev => 
-            prev.map(followingUser => {
-              if (followingUser._id === followingUserId) {
-                return {
-                  ...followingUser,
-                  isFollowing: response.data.isFollowing
-                };
-              }
-              return followingUser;
-            })
-          );
-
-          // Update global state if needed
-          if (currentUser && updateUserData) {
-            const updatedFollowing = response.data.isFollowing 
-              ? [...(currentUser.following || []), followingUserId]
-              : currentUser.following.filter(id => id !== followingUserId);
-            
-            updateUserData({
-              ...currentUser,
-              following: updatedFollowing
-            });
+  try {
+    const response = await followUser(followingUserId);
+    
+    if (response.data.success) {
+      // Update the local state to reflect the change
+      setLocalFollowing(prev => 
+        prev.map(followingUser => {
+          if (followingUser._id === followingUserId) {
+            return {
+              ...followingUser,
+              isFollowing: response.data.isFollowing
+            };
           }
+          return followingUser;
+        })
+      );
 
-          console.log(response.data.isFollowing ? 'Followed successfully' : 'Unfollowed successfully');
+      // UPDATE: Update current user's following count
+      if (currentUser && updateUserData) {
+        const currentFollowing = currentUser.following || [];
+        let updatedFollowing;
+        let followingCount = currentUser.followingCount || currentFollowing.length;
+        
+        if (response.data.isFollowing) {
+          updatedFollowing = [...currentFollowing, followingUserId];
+          followingCount += 1;
         } else {
-          alert(response.data.message || 'Failed to follow user');
+          updatedFollowing = currentFollowing.filter(id => {
+            const followingId = typeof id === 'object' ? id._id : id;
+            return followingId?.toString() !== followingUserId.toString();
+          });
+          followingCount = Math.max(0, followingCount - 1);
         }
-      } catch (error) {
-        console.error('Error following user:', error);
-        const errorMessage = error.response?.data?.message || 'Failed to follow user';
-        alert(errorMessage);
-      } finally {
-        setFollowLoading(prev => ({ ...prev, [followingUserId]: false }));
+        
+        updateUserData({
+          ...currentUser,
+          following: updatedFollowing,
+          followingCount: followingCount
+        });
       }
-    };
 
+      console.log(response.data.isFollowing ? 'Followed successfully' : 'Unfollowed successfully');
+    } else {
+      alert(response.data.message || 'Failed to follow user');
+    }
+  } catch (error) {
+    console.error('Error following user:', error);
+    const errorMessage = error.response?.data?.message || 'Failed to follow user';
+    alert(errorMessage);
+  } finally {
+    setFollowLoading(prev => ({ ...prev, [followingUserId]: false }));
+  }
+};
     const handleCloseModal = (e) => {
       if (e) {
         e.preventDefault();
@@ -924,7 +969,7 @@ const handleViewPosts = (e) => {
                         disabled={followLoading[followingUser._id]}
                         className={`px-3 py-1 text-xs rounded-lg transition font-medium ${
                           followingUser.isFollowing 
-                            ? 'bg-gray-500 text-white hover:bg-gray-600' 
+                            ? 'bg-red-700 text-white hover:bg-blue-900' 
                             : 'bg-red-700 text-white hover:bg-blue-900'
                         } ${followLoading[followingUser._id] ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
@@ -1144,7 +1189,7 @@ const handleViewPosts = (e) => {
                 disabled={isFollowLoading}
                 className={`px-4 py-2 rounded-lg transition font-medium ${
                   isFollowing 
-                    ? 'bg-gray-500 text-white hover:bg-gray-600' 
+                    ? 'bg-red-700 text-white hover:bg-blue-900' 
                     : 'bg-red-700 text-white hover:bg-blue-900'
                 } ${isFollowLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >

@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect } from "react";
 import { updateProfile } from "../services/auth";
+import { followUser } from "../services/user";
 
 export const AuthContext = createContext();
 
@@ -108,6 +109,44 @@ const updateUserData = (newData) => {
       throw error;
     }
   };
+      
+  // In AuthContext.jsx, add this function:
+const handleFollowAction = async (userId, isFollowing) => {
+  try {
+    const response = await followUser(userId); // You'll need to import followUser
+    
+    if (response.data.success) {
+      const currentFollowing = userData.following || [];
+      let updatedFollowing;
+      let followingCount = userData.followingCount || 0;
+      
+      if (isFollowing) {
+        // Unfollow - remove from array
+        updatedFollowing = currentFollowing.filter(following => {
+          const followingId = typeof following === 'object' ? following._id : following;
+          return followingId.toString() !== userId.toString();
+        });
+        followingCount = Math.max(0, followingCount - 1);
+      } else {
+        // Follow - add to array
+        updatedFollowing = [...currentFollowing, userId];
+        followingCount += 1;
+      }
+      
+      // Update user data
+      updateUserData({
+        ...userData,
+        following: updatedFollowing,
+        followingCount: followingCount
+      });
+      
+      return { success: true, isFollowing: !isFollowing };
+    }
+  } catch (error) {
+    console.error('Follow action error:', error);
+    return { success: false, error: error.message };
+  }
+};
 
   return (
     <AuthContext.Provider value={{
@@ -117,7 +156,8 @@ const updateUserData = (newData) => {
       login,
       logout,
       updateUserData,
-      completeOnboarding
+      completeOnboarding,
+      handleFollowAction
     }}>
       {children}
     </AuthContext.Provider>
