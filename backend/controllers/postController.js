@@ -274,10 +274,10 @@ export const debugCheckPosts = async (req, res) => {
 
 // ... rest of the functions remain the same ...
 
-// ✅ 3. TOGGLE LIKE (Master Prompt format: POST /api/posts/like)
+// ✅ 3. TOGGLE LIKE - FIXED WITH BETTER RESPONSE
 export const toggleLike = async (req, res) => {
   try {
-    const { postId } = req.body;
+    const { postId } = req.params;
     const userId = req.user._id;
 
     if (!postId) {
@@ -295,23 +295,53 @@ export const toggleLike = async (req, res) => {
       });
     }
 
-    const likeIndex = post.likes.indexOf(userId);
+    const likeIndex = post.likes.findIndex(like => 
+      like.toString() === userId.toString()
+    );
 
+    let action = '';
+    
     if (likeIndex === -1) {
       // Like the post
       post.likes.push(userId);
+      action = 'liked';
     } else {
       // Unlike the post
       post.likes.splice(likeIndex, 1);
+      action = 'unliked';
     }
 
     await post.save();
 
+    // ✅ Get updated post with populated data
+    const updatedPost = await Post.findById(postId)
+      .populate('user', 'username profilePicture avatar name')
+      .populate('likes', 'username profilePicture')
+      .lean();
+
+    // ✅ Prepare real-time data for sockets
+    const realtimeData = {
+      postId,
+      userId: req.user._id,
+      username: req.user.username,
+      action,
+      likesCount: updatedPost.likes.length,
+      isLiked: likeIndex === -1,
+      timestamp: new Date()
+    };
+
+    // ✅ Emit socket event if available
+    if (req.io) {
+      req.io.to(`post_${postId}`).emit('like_update', realtimeData);
+    }
+
     res.json({
       success: true,
-      message: likeIndex === -1 ? 'Post liked' : 'Post unliked',
-      likes: post.likes.length,
-      isLiked: likeIndex === -1
+      message: `Post ${action}`,
+      likes: updatedPost.likes.length,
+      isLiked: likeIndex === -1,
+      likesList: updatedPost.likes,
+      realtimeData // ✅ For frontend real-time updates
     });
   } catch (error) {
     console.error('Toggle like error:', error);
@@ -322,7 +352,7 @@ export const toggleLike = async (req, res) => {
   }
 };
 
-// ✅ 4. ADD COMMENT (Master Prompt format: POST /api/posts/comment)
+// ✅ 4. ADD COMMENT - COMPLETE REAL-TIME VERSION
 export const addCommentNew = async (req, res) => {
   try {
     const { postId, text } = req.body;
@@ -345,23 +375,62 @@ export const addCommentNew = async (req, res) => {
 
     const comment = {
       user: userId,
-      text: text.trim()
+      text: text.trim(),
+      createdAt: new Date()
     };
 
     post.comments.push(comment);
     await post.save();
 
-    // Get the newly added comment with populated user
-    const updatedPost = await Post.findById(postId)
-      .populate('comments.user', 'username profilePicture');
+    // ✅ COMPLETE POPULATION FOR FRONTEND
+    const populatedPost = await Post.findById(postId)
+      .populate({
+        path: 'comments.user',
+        select: 'username profilePicture avatar name',
+        model: User
+      })
+      .populate({
+        path: 'user',
+        select: 'username profilePicture avatar name',
+        model: User
+      })
+      .populate({
+        path: 'likes',
+        select: 'username profilePicture',
+        model: User
+      })
+      .lean();
 
-    const newComment = updatedPost.comments[updatedPost.comments.length - 1];
+    // ✅ Get the newly added comment
+    const newComment = populatedPost.comments[populatedPost.comments.length - 1];
+
+    // ✅ Prepare real-time data
+    const realtimeData = {
+      postId,
+      comment: newComment,
+      user: {
+        _id: req.user._id,
+        username: req.user.username,
+        profilePicture: req.user.profilePicture
+      },
+      totalComments: populatedPost.comments.length,
+      timestamp: new Date()
+    };
+
+    // ✅ Emit socket event to all users viewing this post
+    if (req.io) {
+      req.io.to(`post_${postId}`).emit('new_comment', realtimeData);
+      console.log(`📢 Emitted new_comment event for post ${postId}`);
+    }
 
     res.json({
       success: true,
       message: 'Comment added successfully',
-      comment: newComment
+      comment: newComment,
+      totalComments: populatedPost.comments.length,
+      realtimeData // ✅ For frontend real-time updates
     });
+    
   } catch (error) {
     console.error('Add comment error:', error);
     res.status(500).json({
@@ -370,7 +439,6 @@ export const addCommentNew = async (req, res) => {
     });
   }
 };
-
 // ✅ 5. DELETE POST (Master Prompt)
 export const deletePost = async (req, res) => {
   try {
@@ -547,4 +615,16 @@ export const addComment = async (req, res) => {
       message: 'Failed to add comment'
     });
   }
+  
+}
+// ✅ NEW: SOCKET ROOM JOIN FUNCTION (ADD AT THE END OF FILE)
+export const joinPostRoom = (socket, postId) => {
+  socket.join(`post_${postId}`);
+  console.log(`👥 User joined post room: post_${postId}`);
+};
+
+// ✅ NEW: SOCKET ROOM LEAVE FUNCTION
+export const leavePostRoom = (socket, postId) => {
+  socket.leave(`post_${postId}`);
+  console.log(`👋 User left post room: post_${postId}`);
 };

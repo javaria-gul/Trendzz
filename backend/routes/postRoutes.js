@@ -3,8 +3,7 @@
 import express from "express";
 import { 
   createPost, 
-  getFeed, 
-  addLike, 
+  getFeed,  
   addComment,
   deletePost,
   getUserPosts,
@@ -28,7 +27,7 @@ router.post("/",
 router.get("/", getFeed);
 
 // 3. POST /api/posts/like - Toggle like
-router.post("/like", auth, toggleLike);
+router.post("/:postId/like", auth, toggleLike);
 
 // 4. POST /api/posts/comment - Add comment
 router.post("/comment", auth, addCommentNew);
@@ -40,7 +39,7 @@ router.delete("/:id", auth, deletePost);
 router.get("/user/:userId", getUserPosts);
 
 // FOR BACKWARD COMPATIBILITY
-router.post("/:id/like", auth, addLike);
+
 router.post("/:id/comment", auth, addComment);
 // postRoutes.js mein
 router.get("/debug/check", debugCheckPosts);

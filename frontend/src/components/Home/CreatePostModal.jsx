@@ -207,12 +207,12 @@ try {
         {/* User Info */}
         <div className="p-4 border-b">
           <div className="flex items-center space-x-3">
-            <img 
-              src={userData?.profilePicture || '/default-avatar.png'} 
-              alt="Profile"
-              className="w-10 h-10 rounded-full border-2 border-gray-200 object-cover"
-              onError={(e) => e.target.src = '/default-avatar.png'}
-            />
+           <img 
+               src={userData?.profilePicture || userData?.avatar || '/default-avatar.png'} 
+               alt="Profile"
+               className="w-10 h-10 rounded-full border-2 border-gray-200 object-cover"
+               onError={(e) => e.target.src = '/default-avatar.png'}
+              />
             <div>
               <h4 className="font-semibold text-gray-800">@{userData?.username || 'user'}</h4>
               <select 

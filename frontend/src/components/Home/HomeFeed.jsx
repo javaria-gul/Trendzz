@@ -1,4 +1,4 @@
-// src/components/Home/HomeFeed.jsx
+// src/components/Home/HomeFeed.jsx - COMPLETE FIXED VERSION
 import React, { useState, useEffect, useContext } from 'react';
 import PostCard from './PostCard';
 import CreatePostModal from './CreatePostModal';
@@ -13,87 +13,118 @@ const HomeFeed = () => {
   const [hasMore, setHasMore] = useState(true);
   const { userData } = useContext(AuthContext);
 
-// HomeFeed.jsx - fetchPosts function mein
-const fetchPosts = async (pageNum = 1) => {
-  try {
-    setLoading(true);
-    console.log(`🔄 Fetching posts page ${pageNum}...`);
-    
-    const response = await postsAPI.getPosts(pageNum, 10);
-    
-    console.log('📥 API Response:', response);
-    console.log('Posts data:', response.posts);
-    
-    // ✅ FIXED: Check response structure properly
-    const postsData = response.posts || response.data?.posts || [];
-    
-    if (pageNum === 1) {
-      setPosts(postsData);
-    } else {
-      setPosts(prev => [...prev, ...postsData]);
+  // ✅ FIXED: fetchPosts function
+  const fetchPosts = async (pageNum = 1) => {
+    try {
+      setLoading(true);
+      console.log(`🔄 Fetching posts page ${pageNum}...`);
+      
+      // ✅ CHANGE 1:  instead of getPosts
+      const response = await postsAPI.getPosts(pageNum, 100);
+      
+      console.log('📥 API Response:', response);
+      
+      // ✅ CHANGE 2: Check response.data?.posts first
+      const postsData = response.data?.posts || response.posts || [];
+      
+      if (pageNum === 1) {
+        setPosts(postsData);
+      } else {
+        setPosts(prev => [...prev, ...postsData]);
+      }
+      
+      // Check if there are more posts
+      setHasMore(postsData.length === 100);
+      
+    } catch (error) {
+      console.error('❌ Error fetching posts:', error);
+      setPosts([]);
+    } finally {
+      setLoading(false);
     }
-    
-    // Check if there are more posts
-    setHasMore(postsData.length === 10);
-    
-  } catch (error) {
-    console.error('❌ Error fetching posts:', error);
-    console.error('Error response:', error.response?.data);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   useEffect(() => {
     fetchPosts(1);
   }, []);
 
+  // ✅ FIXED: handleLike function
   const handleLike = async (postId) => {
     try {
-      const response = await postsAPI.likePost(postId);
+      console.log('❤️ Liking post:', postId);
       
-      setPosts(prevPosts => 
-        prevPosts.map(post => 
-          post._id === postId 
-            ? { 
-                ...post, 
+      const response = await postsAPI.likePost(postId);
+      console.log('Like response:', response);
+      
+      if (response.success) {
+        setPosts(prevPosts => 
+          prevPosts.map(post => {
+            if (post._id === postId) {
+              return {
+                ...post,
+                // ✅ FIXED: Update both isLiked and likes array
                 isLiked: response.isLiked,
-                likesCount: response.likes 
-              } 
-            : post
-        )
-      );
+                likes: response.likesList || post.likes,
+                likesCount: response.likes || post.likesCount
+              };
+            }
+            return post;
+          })
+        );
+      } else {
+        console.error('Like failed:', response.message);
+      }
     } catch (error) {
       console.error('Error liking post:', error);
+      alert('Failed to like post');
     }
   };
 
+  // ✅ FIXED: handleAddComment function
   const handleAddComment = async (postId, text) => {
     try {
-      const response = await postsAPI.addComment(postId, text);
+      console.log('💬 Adding comment to post:', postId);
       
-      setPosts(prevPosts => 
-        prevPosts.map(post => 
-          post._id === postId 
-            ? { 
-                ...post, 
-                comments: [...post.comments, response.comment],
-                commentsCount: (post.commentsCount || 0) + 1
-              } 
-            : post
-        )
-      );
+      const response = await postsAPI.addComment(postId, text);
+      console.log('Comment response:', response);
+      
+      if (response.success) {
+        setPosts(prevPosts => 
+          prevPosts.map(post => {
+            if (post._id === postId) {
+              return {
+                ...post,
+                // ✅ FIXED: Add comment to array safely
+                comments: [...(post.comments || []), response.comment],
+                commentsCount: response.totalComments || (post.commentsCount || 0) + 1
+              };
+            }
+            return post;
+          })
+        );
+        
+        // ✅ FIXED: Return comment for PostCard optimistic update
+        return { comment: response.comment };
+      } else {
+        console.error('Comment failed:', response.message);
+        throw new Error(response.message);
+      }
     } catch (error) {
       console.error('Error adding comment:', error);
+      alert('Failed to add comment');
+      throw error;
     }
   };
 
   const handlePostCreated = (newPost) => {
+    console.log('🆕 New post created:', newPost);
     setPosts(prev => [newPost, ...prev]);
     setShowCreateModal(false);
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return 'Just now';
+    
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now - date;
@@ -101,11 +132,15 @@ const fetchPosts = async (pageNum = 1) => {
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
+    if (diffMins < 1) return 'Just now';
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
     
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric' 
+    });
   };
 
   return (
@@ -117,6 +152,10 @@ const fetchPosts = async (pageNum = 1) => {
             src={userData?.profilePicture || '/default-avatar.png'} 
             alt="Profile"
             className="w-12 h-12 rounded-full border-2 border-gray-200 object-cover"
+            onError={(e) => {
+              e.target.src = '/default-avatar.png';
+              e.target.onerror = null;
+            }}
           />
           <button 
             onClick={() => setShowCreateModal(true)}
@@ -160,6 +199,8 @@ const fetchPosts = async (pageNum = 1) => {
             <PostCard
               key={post._id}
               post={post}
+              // ✅ CHANGE 3: ADD currentUserId prop
+              currentUserId={userData?._id}
               onLikeToggle={handleLike}
               onAddComment={handleAddComment}
               formatDate={formatDate}

@@ -47,7 +47,7 @@ API.interceptors.response.use(
     
     // ✅ IMPORTANT: Return the FULL response, not just response.data
     // Kyonki postsAPI ko access chahiye headers and other info
-    return response; // ← CHANGE THIS LINE
+    return response.data; // ← CHANGE THIS LINE
   },
   (error) => {
     console.error('❌ API Error:', {
@@ -116,7 +116,7 @@ createPost: async (formData, onUploadProgress) => {
   
   // Toggle like
   likePost: (postId) => 
-    API.post('/posts/like', { postId }),
+   API.post(`/posts/${postId}/like`),
   
   // Add comment
   addComment: (postId, text) => 

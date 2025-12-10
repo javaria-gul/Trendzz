@@ -3,7 +3,7 @@ import API from "./api";
 // ✅ Master prompt ke according updated APIs
 export const postsAPI = {
   // Get all posts (paginated)
-  getAllPosts: (page = 1, limit = 10) => 
+  getAllPosts: (page = 1, limit = 100) => 
     API.get("/posts", { params: { page, limit } }),
   
   // Create post with media (multipart/form-data)
@@ -15,9 +15,9 @@ export const postsAPI = {
       onUploadProgress
     }),
   
-  // Like/Unlike post (master prompt ka format)
+  // ✅ FIXED: Like/Unlike post (NEW FORMAT)
   likePost: (postId) => 
-    API.post('/posts/like', { postId }),
+    API.post(`/posts/${postId}/like`),  // ✅ postId URL mein
   
   // Add comment (master prompt ka format)
   addComment: (postId, text) => 
