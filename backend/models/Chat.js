@@ -1,13 +1,11 @@
-// backend/models/Chat.js
-
 import mongoose from "mongoose";
 
 const messageSchema = new mongoose.Schema({
-  // ✅ ADD THIS MISSING FIELD - CRITICAL
+  // ✅ TEMPORARILY required: false rakho (existing data ke liye)
   chat: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: "Chat", 
-    required: true 
+    required: false  // ✅ CHANGE FROM true TO false
   },
   sender: { 
     type: mongoose.Schema.Types.ObjectId, 
@@ -87,6 +85,11 @@ const chatSchema = new mongoose.Schema({
   typingUsers: [{ 
     type: mongoose.Schema.Types.ObjectId, 
     ref: "User" 
+  }],
+  // ✅ ADD BACKWARD COMPATIBILITY FIELD
+  messageHistory: [{ 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: "Message" 
   }]
 }, { 
   timestamps: true 
@@ -95,8 +98,6 @@ const chatSchema = new mongoose.Schema({
 // Index for faster queries
 chatSchema.index({ participants: 1 });
 chatSchema.index({ updatedAt: -1 });
-
-// ✅ ADD INDEX FOR MESSAGES TOO
 messageSchema.index({ chat: 1, createdAt: -1 });
 
 const Chat = mongoose.model("Chat", chatSchema);

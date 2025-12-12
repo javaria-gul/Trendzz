@@ -104,7 +104,7 @@ router.post("/chats/start", requireAuth, async (req, res) => {
   }
 });
 
-// Get messages for a chat - ENHANCED DEBUGGING
+// Get messages for a chat - FIXED FOR BACKWARD COMPATIBILITY
 router.get("/chats/:chatId/messages", requireAuth, async (req, res) => {
   try {
     const { chatId } = req.params;
@@ -123,7 +123,8 @@ router.get("/chats/:chatId/messages", requireAuth, async (req, res) => {
       });
     }
 
-    const messages = await Message.find({ 
+    // ✅ METHOD 1: Try with chat field first
+    let messages = await Message.find({ 
       chat: chatId,
       deleted: false 
     })
@@ -133,19 +134,37 @@ router.get("/chats/:chatId/messages", requireAuth, async (req, res) => {
     .skip(skip)
     .limit(limit);
 
-    console.log(`✅ Found ${messages.length} messages for chat ${chatId}`);
-    
-    // DEBUG: Log first message details
-    if (messages.length > 0) {
-      console.log('🔍 First message sample:', {
-        id: messages[0]._id,
-        text: messages[0].text,
-        sender: messages[0].sender?.name,
-        chat: messages[0].chat,
-        createdAt: messages[0].createdAt
-      });
+    console.log(`🔍 Found ${messages.length} messages with chat field`);
+
+    // ✅ METHOD 2: If no messages found, try messageHistory (for existing data)
+    if (messages.length === 0 && chat.messageHistory && chat.messageHistory.length > 0) {
+      console.log(`🔄 Trying messageHistory for existing messages...`);
+      messages = await Message.find({
+        _id: { $in: chat.messageHistory },
+        deleted: false
+      })
+      .populate("sender", "name username avatar")
+      .populate("repliedTo")
+      .sort({ createdAt: -1 })
+      .limit(limit);
+      
+      console.log(`📦 Found ${messages.length} messages via messageHistory`);
     }
 
+    // ✅ METHOD 3: If still no messages, try lastMessage
+    if (messages.length === 0 && chat.lastMessage) {
+      console.log(`🔄 Trying lastMessage...`);
+      const lastMsg = await Message.findById(chat.lastMessage)
+        .populate("sender", "name username avatar");
+      
+      if (lastMsg) {
+        messages = [lastMsg];
+        console.log(`📦 Found 1 message via lastMessage`);
+      }
+    }
+
+    console.log(`✅ Total messages found: ${messages.length} for chat ${chatId}`);
+    
     res.json({ 
       success: true, 
       data: messages.reverse(),

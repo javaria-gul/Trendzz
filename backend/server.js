@@ -1,3 +1,4 @@
+// backend/server.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -43,7 +44,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use("/api/auth", authRoutes);
 app.use("/api/posts", postRoutes);  // ✅ Post routes should be before userRoutes if they have similar patterns
 app.use("/api/users", userRoutes);
-app.use("/api/chat", chatRoutes);   // ✅ Better to prefix with /api/chat
+app.use("/api", chatRoutes);   // ✅ Better to prefix with /api/chat
 
 // ✅ Home Route
 app.get("/", (req, res) => {
