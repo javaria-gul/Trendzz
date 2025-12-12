@@ -26,7 +26,7 @@ export const uploadImage = (formData) =>
 // ML-based suggested users for onboarding
 export const getSuggestedUsers = () => API.get("/suggestions/strict");
 
-// Search users - FIXED: Simple and clean
+// Search users
 export const searchUsers = (query) => {
   return API.get(`/users/search?q=${encodeURIComponent(query)}`);
 };
@@ -48,6 +48,3 @@ export const debugAllUsers = () => API.get('/users/debug/all-users');
 
 // Get suggested users for chat
 export const getChatSuggestedUsers = () => API.get('/users/suggested-users');
-
-// Unfollow user (agar backend me hai to)
-// export const unfollowUser = (userId) => API.delete(`/users/follow/${userId}`);
