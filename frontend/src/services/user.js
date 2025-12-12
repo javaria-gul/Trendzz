@@ -1,7 +1,6 @@
 import API from "./api";
 
 // Update profile with image upload
-// Change to use the new endpoint
 export const updateProfile = (formData) => API.put('/auth/profile-with-images', formData, {
   headers: {
     'Content-Type': 'multipart/form-data'
@@ -15,32 +14,31 @@ export const uploadImage = (formData) => API.post('/auth/upload-image', formData
   }
 });
 
-
 // ML-based suggested users for onboarding
 export const getSuggestedUsers = () => API.get("/suggestions/strict");
 
-// Other functions remain same...
-export const searchUsers = async (query) => {
-  try {
-    const response = await API.get(`/users/search?q=${encodeURIComponent(query)}`);
-    if (response.data && response.data.success) {
-      return response;
-    } else {
-      throw new Error("Invalid response format");
-    }
-  } catch (error) {
-    console.error("Search API error:", error);
-    throw error;
-  }
+// Search users - FIXED: Simple and clean
+export const searchUsers = (query) => {
+  return API.get(`/users/search?q=${encodeURIComponent(query)}`);
 };
 
-// Block user - FIXED ENDPOINT
+// Get user profile by ID
+export const getUserProfile = (userId) => API.get(`/users/profile/${userId}`);
+
+// Follow/Unfollow user
+export const followUser = (userId) => API.post(`/users/follow/${userId}`);
+
+// Admire/Unadmire user
+export const admireUser = (userId) => API.post(`/users/admire/${userId}`);
+
+// Block user
 export const blockUser = (userId) => API.post(`/users/block/${userId}`);
 
-// FIX: Change unblockUser from PUT to POST to match backend
-export const unblockUser = (userId) => API.post(`http://localhost:5000/api/users/unblock/${userId}`);
-// services/user.js
-export const getUserProfile = (userId) => API.get(`/users/profile/${userId}`);
-export const followUser = (userId) => API.post(`/users/follow/${userId}`);
-export const admireUser = (userId) => API.post(`/users/admire/${userId}`);
+// Unblock user - FIXED: Correct endpoint
+export const unblockUser = (userId) => API.post(`/users/unblock/${userId}`);
+
+// Debug function to get all users
 export const debugAllUsers = () => API.get('/users/debug/all-users');
+
+// Get suggested users for chat
+export const getChatSuggestedUsers = () => API.get('/users/suggested-users');
