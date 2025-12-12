@@ -1,12 +1,13 @@
+// backend/routes/chat.js
 import express from "express";
 import { Chat, Message } from "../models/Chat.js";
 import User from "../models/User.js";
-import auth from "../middleware/auth.js";
+import requireAuth from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 // Get all chats for a user
-router.get("/chats", auth, async (req, res) => {
+router.get("/chats", requireAuth, async (req, res) => {
   try {
     const chats = await Chat.find({ 
       participants: req.user.id 
@@ -22,7 +23,7 @@ router.get("/chats", auth, async (req, res) => {
 });
 
 // Get or create chat with another user
-router.post("/chats/start", auth, async (req, res) => {
+router.post("/chats/start", requireAuth, async (req, res) => {
   try {
     const { receiverId } = req.body;
     
@@ -64,7 +65,7 @@ router.post("/chats/start", auth, async (req, res) => {
 });
 
 // Get messages for a chat
-router.get("/chats/:chatId/messages", auth, async (req, res) => {
+router.get("/chats/:chatId/messages", requireAuth, async (req, res) => {
   try {
     const { chatId } = req.params;
     const page = parseInt(req.query.page) || 1;
@@ -96,7 +97,7 @@ router.get("/chats/:chatId/messages", auth, async (req, res) => {
 });
 
 // Send message
-router.post("/chats/:chatId/messages", auth, async (req, res) => {
+router.post("/chats/:chatId/messages", requireAuth, async (req, res) => {
   try {
     const { chatId } = req.params;
     const { text, image, file, messageType, repliedTo } = req.body;
@@ -142,7 +143,7 @@ router.post("/chats/:chatId/messages", auth, async (req, res) => {
 });
 
 // Mark messages as read
-router.put("/chats/:chatId/read", auth, async (req, res) => {
+router.put("/chats/:chatId/read", requireAuth, async (req, res) => {
   try {
     const { chatId } = req.params;
     

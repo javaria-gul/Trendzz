@@ -1,3 +1,5 @@
+// frontend/src/context/AuthContext.jsx
+
 import React, { createContext, useState, useEffect } from "react";
 import { updateProfile } from "../services/auth";
 
@@ -45,36 +47,46 @@ export const AuthProvider = ({ children }) => {
     window.history.pushState(null, '', '/login');
   };
 
-  // Function to update user data after onboarding
+  // Enhanced updateUserData function for block/unblock
   const updateUserData = (newData) => {
-    const updated = { ...userData, ...newData, firstLogin: false };
-    localStorage.setItem("trendzz_user", JSON.stringify(updated));
-    setUserData(updated);
-    return updated;
+    console.log('🔄 AuthContext: updateUserData called with:', newData);
+    
+    setUserData(prevData => {
+      const updatedData = { ...prevData, ...newData };
+      
+      // Ensure blockedUsers array exists and is properly formatted
+      if (updatedData.blockedUsers && !Array.isArray(updatedData.blockedUsers)) {
+        updatedData.blockedUsers = [];
+      }
+      
+      console.log('🔄 AuthContext: Updated user data:', updatedData);
+      localStorage.setItem("trendzz_user", JSON.stringify(updatedData));
+      return updatedData;
+    });
   };
 
   // UPDATE completeOnboarding function
-const completeOnboarding = async (userData) => {
-  try {
-    // Send data to backend
-    const response = await updateProfile(userData);
-    
-    if (response.data.success) {
-      const updatedUser = response.data.user;
+  const completeOnboarding = async (userData) => {
+    try {
+      // Send data to backend
+      const response = await updateProfile(userData);
       
-      // Update local storage and state
-      localStorage.setItem("trendzz_user", JSON.stringify(updatedUser));
-      setUserData(updatedUser);
-      
-      return updatedUser;
-    } else {
-      throw new Error(response.data.message);
+      if (response.data.success) {
+        const updatedUser = response.data.user;
+        
+        // Update local storage and state
+        localStorage.setItem("trendzz_user", JSON.stringify(updatedUser));
+        setUserData(updatedUser);
+        
+        return updatedUser;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (error) {
+      console.error('Error in completeOnboarding:', error);
+      throw error;
     }
-  } catch (error) {
-    console.error('Error in completeOnboarding:', error);
-    throw error;
-  }
-};
+  };
 
   return (
     <AuthContext.Provider value={{
@@ -90,5 +102,3 @@ const completeOnboarding = async (userData) => {
     </AuthContext.Provider>
   );
 };
-
-

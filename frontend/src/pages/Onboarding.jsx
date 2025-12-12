@@ -1,9 +1,7 @@
-// frontend/src/pages/Onboarding.jsx
-
-import React, { useState, useRef, useCallback, useContext, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Check, ArrowRight, ArrowLeft, Sparkles, User, GraduationCap, Users, CheckCircle, XCircle, UserPlus } from 'lucide-react';
+import { Check, ArrowRight, ArrowLeft, Sparkles, User, GraduationCap, CheckCircle, XCircle } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import API from '../services/api';
 
@@ -11,18 +9,33 @@ const Onboarding = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState({
     username: '',
-    avatar: '👦',
+    avatar: '/avatars/avatar1.png',
     role: '',
     semester: '',
     batch: '',
-    subjects: [],
-    following: []
+    subjects: []
   });
 
   const navigate = useNavigate();
   const { completeOnboarding } = useContext(AuthContext);
 
-  // Simple debounce function
+  // Avatar options
+  const avatarOptions = [
+    { id: 1, path: '/avatars/avatar1.png', alt: 'Avatar 1' },
+    { id: 2, path: '/avatars/avatar2.png', alt: 'Avatar 2' },
+    { id: 3, path: '/avatars/avatar3.png', alt: 'Avatar 3' },
+    { id: 4, path: '/avatars/avatar4.png', alt: 'Avatar 4' },
+    { id: 5, path: '/avatars/avatar5.png', alt: 'Avatar 5' },
+    { id: 6, path: '/avatars/avatar6.png', alt: 'Avatar 6' },
+    { id: 7, path: '/avatars/avatar7.png', alt: 'Avatar 7' },
+    { id: 8, path: '/avatars/avatar8.png', alt: 'Avatar 8' },
+    { id: 9, path: '/avatars/avatar9.png', alt: 'Avatar 9' },
+    { id: 10, path: '/avatars/avatar10.png', alt: 'Avatar 10' },
+    { id: 11, path: '/avatars/avatar11.png', alt: 'Avatar 11' },
+    { id: 12, path: '/avatars/avatar12.png', alt: 'Avatar 12' }
+  ];
+
+  // Debounce function
   const debounce = (func, wait) => {
     let timeout;
     return function executedFunction(...args) {
@@ -42,8 +55,6 @@ const Onboarding = () => {
     const [isAvailable, setIsAvailable] = useState(null);
     const [hasUserStoppedTyping, setHasUserStoppedTyping] = useState(false);
     const inputRef = useRef(null);
-
-    const avatars = ['👦', '👧', '👨', '👩', '🧑', '👨‍🎓', '👩‍🎓', '😊', '🤓', '😎', '🌟', '🚀'];
 
     const checkUsername = useCallback(
       debounce((value) => {
@@ -88,30 +99,64 @@ const Onboarding = () => {
     }, []);
 
     return (
-      <div className="space-y-6">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-8"
+      >
+        {/* Avatar Selection */}
         <div>
-          <h3 className="text-lg font-semibold text-gray-800 mb-4 text-center">Choose Your Avatar</h3>
-          <div className="grid grid-cols-6 gap-3">
-            {avatars.map((avatar, index) => (
+          <h3 className="text-xl font-bold text-gray-800 mb-6 text-center">Choose Your Avatar</h3>
+          <div className="grid grid-cols-4 gap-4">
+            {avatarOptions.map((avatar, index) => (
               <motion.button
-                key={index}
-                type="button"
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                className={`text-2xl p-3 rounded-2xl transition-all ${formData.avatar === avatar
-                    ? 'bg-purple-100 border-2 border-purple-500'
-                    : 'bg-gray-100 hover:bg-gray-200'
-                  }`}
-                onClick={() => setFormData(prev => ({ ...prev, avatar }))}
+                key={avatar.id}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: index * 0.05 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className={`p-3 rounded-2xl transition-all border-2 ${
+                  formData.avatar === avatar.path
+                    ? 'border-purple-500 bg-purple-50 shadow-lg ring-2 ring-purple-200'
+                    : 'border-gray-200 bg-white hover:border-purple-300 hover:shadow-md'
+                }`}
+                onClick={() => setFormData(prev => ({ ...prev, avatar: avatar.path }))}
               >
-                {avatar}
+                <div className="flex flex-col items-center space-y-2">
+                  <img 
+                    src={avatar.path} 
+                    alt={avatar.alt}
+                    className="w-16 h-16 rounded-full object-cover border-2 border-gray-100"
+                  />
+                  <div className={`w-2 h-2 rounded-full transition-colors ${
+                    formData.avatar === avatar.path ? 'bg-purple-500' : 'bg-gray-300'
+                  }`} />
+                </div>
               </motion.button>
             ))}
           </div>
+          
+          {/* Selected Avatar Preview */}
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-8 text-center"
+          >
+            <p className="text-sm text-gray-600 mb-3 font-medium">Your selected avatar</p>
+            <div className="inline-flex items-center justify-center p-4 bg-purple-50 rounded-2xl border-2 border-purple-200">
+              <img 
+                src={formData.avatar} 
+                alt="Selected Avatar"
+                className="w-24 h-24 rounded-full object-cover border-2 border-white shadow-lg"
+              />
+            </div>
+          </motion.div>
         </div>
 
+        {/* Username Input */}
         <div>
-          <h3 className="text-lg font-semibold text-gray-800 mb-3 text-center">Choose Username</h3>
+          <h3 className="text-xl font-bold text-gray-800 mb-4 text-center">Choose Your Username</h3>
           <div className="relative">
             <input
               ref={inputRef}
@@ -119,71 +164,73 @@ const Onboarding = () => {
               value={username}
               onChange={handleUsernameChange}
               placeholder="Enter your username (min 3 characters)"
-              className="w-full p-4 border-2 border-gray-300 rounded-xl focus:outline-none focus:border-purple-500 text-lg text-black placeholder-gray-400 bg-white"
+              className="w-full p-4 border-2 border-gray-300 rounded-xl focus:outline-none focus:border-purple-500 text-lg text-gray-800 placeholder-gray-400 bg-white shadow-sm"
               maxLength={20}
               autoFocus
             />
+            
+            <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+              {isChecking && (
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                >
+                  <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full" />
+                </motion.div>
+              )}
+              {!isChecking && isAvailable && hasUserStoppedTyping && (
+                <CheckCircle className="text-green-500" size={24} />
+              )}
+              {!isChecking && !isAvailable && username.length >= 3 && hasUserStoppedTyping && (
+                <XCircle className="text-red-500" size={24} />
+              )}
+            </div>
+          </div>
 
-            {isChecking && (
-              <div className="absolute right-3 top-4 text-gray-400 animate-spin">⟳</div>
+          {/* Status Messages */}
+          <div className="mt-4 space-y-2">
+            {username.length > 0 && username.length < 3 && (
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="text-amber-600 text-sm font-medium text-center"
+              >
+                Type at least {3 - username.length} more character(s)
+              </motion.p>
+            )}
+
+            {isChecking && username.length >= 3 && (
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="text-blue-600 text-sm font-medium text-center"
+              >
+                Checking username availability...
+              </motion.p>
             )}
 
             {!isChecking && isAvailable && hasUserStoppedTyping && (
-              <CheckCircle className="absolute right-3 top-4 text-green-500" size={20} />
+              <motion.p
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="text-green-600 text-sm font-medium text-center"
+              >
+                ✅ Username is available!
+              </motion.p>
             )}
 
             {!isChecking && !isAvailable && username.length >= 3 && hasUserStoppedTyping && (
-              <XCircle className="absolute right-3 top-4 text-red-500" size={20} />
+              <motion.p
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="text-red-600 text-sm font-medium text-center"
+              >
+                ❌ Username is not available
+              </motion.p>
             )}
           </div>
-
-          <div className="mt-2 text-center">
-            <p className="text-sm text-gray-500">
-              Minimum 3 characters - letters, numbers, underscores, and spaces allowed
-            </p>
-          </div>
-
-          {username.length > 0 && username.length < 3 && (
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="mt-2 text-sm font-medium text-center text-yellow-600"
-            >
-              Type at least {3 - username.length} more character(s)
-            </motion.p>
-          )}
-
-          {isChecking && username.length >= 3 && (
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="mt-2 text-sm font-medium text-center text-blue-600"
-            >
-              Checking username availability...
-            </motion.p>
-          )}
-
-          {!isChecking && isAvailable && hasUserStoppedTyping && (
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="mt-2 text-sm font-medium text-center text-green-600"
-            >
-              ✅ Username is available!
-            </motion.p>
-          )}
-
-          {!isChecking && !isAvailable && username.length >= 3 && hasUserStoppedTyping && (
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="mt-2 text-sm font-medium text-center text-red-600"
-            >
-              ❌ Username is not available
-            </motion.p>
-          )}
         </div>
-      </div>
+      </motion.div>
     );
   };
 
@@ -195,47 +242,71 @@ const Onboarding = () => {
         title: 'Student',
         description: 'I am here to learn and connect with peers',
         icon: '🎓',
-        color: 'from-blue-500 to-blue-600'
+        color: 'blue'
       },
       {
         id: 'faculty',
         title: 'Faculty Member',
         description: 'I teach and guide students',
         icon: '👨‍🏫',
-        color: 'from-green-500 to-green-600'
+        color: 'green'
       }
     ];
 
     return (
-      <div className="space-y-6">
-        <h3 className="text-lg font-semibold text-gray-800 text-center mb-6">
-          Select Your Role
-        </h3>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-8"
+      >
+        <h3 className="text-xl font-bold text-gray-800 text-center mb-8">Select Your Role</h3>
 
-        <div className="grid grid-cols-1 gap-4">
-          {roles.map((role) => (
+        <div className="grid grid-cols-1 gap-6 max-w-md mx-auto">
+          {roles.map((role, index) => (
             <motion.button
               key={role.id}
-              whileHover={{ scale: 1.02 }}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.1 }}
+              whileHover={{ scale: 1.02, y: -2 }}
               whileTap={{ scale: 0.98 }}
-              className={`p-6 rounded-2xl border-2 transition-all ${formData.role === role.id
-                  ? `border-transparent bg-gradient-to-r ${role.color} text-white shadow-lg`
-                  : 'border-gray-300 bg-white text-gray-700 hover:border-purple-400'
-                }`}
+              className={`p-6 rounded-2xl border-2 transition-all shadow-sm text-left ${
+                formData.role === role.id
+                  ? `border-${role.color}-500 bg-${role.color}-50 ring-2 ring-${role.color}-200`
+                  : 'border-gray-200 bg-white hover:border-purple-300 hover:shadow-md'
+              }`}
               onClick={() => setFormData(prev => ({ ...prev, role: role.id }))}
             >
-              <div className="flex flex-col items-center text-center space-y-3">
-                <div className={`text-3xl ${formData.role === role.id ? 'text-white' : 'text-gray-600'
-                  }`}>
+              <div className="flex items-center space-x-4">
+                <div className={`text-3xl ${formData.role === role.id ? `text-${role.color}-600` : 'text-gray-500'}`}>
                   {role.icon}
                 </div>
-                <h4 className="text-xl font-bold">{role.title}</h4>
-                <p className="text-sm opacity-80">{role.description}</p>
+                <div className="flex-1">
+                  <h4 className={`text-lg font-semibold ${
+                    formData.role === role.id ? `text-${role.color}-700` : 'text-gray-800'
+                  }`}>
+                    {role.title}
+                  </h4>
+                  <p className={`text-sm ${
+                    formData.role === role.id ? `text-${role.color}-600` : 'text-gray-600'
+                  }`}>
+                    {role.description}
+                  </p>
+                </div>
+                {formData.role === role.id && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className={`bg-${role.color}-500 rounded-full p-1`}
+                  >
+                    <Check size={16} className="text-white" />
+                  </motion.div>
+                )}
               </div>
             </motion.button>
           ))}
         </div>
-      </div>
+      </motion.div>
     );
   };
 
@@ -246,25 +317,30 @@ const Onboarding = () => {
 
     if (formData.role === 'student') {
       return (
-        <div className="space-y-6">
-          <h3 className="text-lg font-semibold text-gray-800 text-center mb-6">
-            Academic Information
-          </h3>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-8"
+        >
+          <h3 className="text-xl font-bold text-gray-800 text-center mb-8">Academic Information</h3>
 
+          {/* Semester Selection */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3 text-center">
-              Current Semester
-            </label>
-            <div className="grid grid-cols-4 gap-2">
-              {semesters.map((semester) => (
+            <label className="block text-lg font-semibold text-gray-800 mb-4 text-center">Current Semester</label>
+            <div className="grid grid-cols-4 gap-3">
+              {semesters.map((semester, index) => (
                 <motion.button
                   key={semester}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: index * 0.05 }}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className={`p-3 rounded-xl border transition-all ${formData.semester === semester
-                      ? 'bg-purple-500 text-white border-purple-500'
-                      : 'bg-gray-100 border-gray-300 hover:bg-gray-200'
-                    }`}
+                  className={`p-4 rounded-xl border-2 font-semibold transition-all ${
+                    formData.semester === semester
+                      ? 'bg-purple-600 text-white border-purple-600 shadow-lg'
+                      : 'bg-white text-gray-800 border-gray-300 hover:border-purple-400 hover:shadow-md'
+                  }`}
                   onClick={() => setFormData(prev => ({ ...prev, semester }))}
                 >
                   {semester}
@@ -273,20 +349,23 @@ const Onboarding = () => {
             </div>
           </div>
 
+          {/* Batch Selection */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3 text-center">
-              Batch Year
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {batches.map((batch) => (
+            <label className="block text-lg font-semibold text-gray-800 mb-4 text-center">Batch Year</label>
+            <div className="grid grid-cols-3 gap-3">
+              {batches.map((batch, index) => (
                 <motion.button
                   key={batch}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: index * 0.05 + 0.2 }}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className={`p-3 rounded-xl border transition-all ${formData.batch === batch
-                      ? 'bg-blue-500 text-white border-blue-500'
-                      : 'bg-gray-100 border-gray-300 hover:bg-gray-200'
-                    }`}
+                  className={`p-4 rounded-xl border-2 font-semibold transition-all ${
+                    formData.batch === batch
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-lg'
+                      : 'bg-white text-gray-800 border-gray-300 hover:border-blue-400 hover:shadow-md'
+                  }`}
                   onClick={() => setFormData(prev => ({ ...prev, batch }))}
                 >
                   {batch}
@@ -294,246 +373,49 @@ const Onboarding = () => {
               ))}
             </div>
           </div>
-        </div>
+        </motion.div>
       );
     }
 
     return (
-      <div className="text-center py-8">
-        <div className="text-6xl mb-4">👨‍🏫</div>
-        <h3 className="text-xl font-semibold text-gray-800 mb-2">Faculty Member</h3>
-        <p className="text-gray-600">You're all set as a faculty member!</p>
-      </div>
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="text-center py-12"
+      >
+        <div className="text-6xl mb-6">👨‍🏫</div>
+        <h3 className="text-2xl font-bold text-gray-800 mb-3">Faculty Member</h3>
+        <p className="text-gray-600 text-lg">You're all set as a faculty member!</p>
+      </motion.div>
     );
   };
-
-  // Follow Suggestions Step Component - CLEAN VERSION
-const FollowStep = () => {
-  const [suggestedUsers, setSuggestedUsers] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  // Fetch real suggested users
-  useEffect(() => {
-    const fetchSuggestedUsers = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        
-        const response = await API.get('/users/suggested-users');
-        
-        if (response.data.success) {
-          const users = response.data.data || [];
-          setSuggestedUsers(users);
-        } else {
-          setError('Failed to load users');
-          setSuggestedUsers([]);
-        }
-      } catch (error) {
-        setError('Failed to load suggestions');
-        setSuggestedUsers([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchSuggestedUsers();
-  }, []);
-
-  // TOGGLE FOLLOW FUNCTION
-  const toggleFollow = (userId) => {
-    setFormData(prevData => {
-      const isCurrentlyFollowing = prevData.following.includes(userId);
-      let newFollowing;
-      
-      if (isCurrentlyFollowing) {
-        // Unfollow - remove user from array
-        newFollowing = prevData.following.filter(id => id !== userId);
-      } else {
-        // Follow - add user to array
-        newFollowing = [...prevData.following, userId];
-      }
-      
-      return {
-        ...prevData,
-        following: newFollowing
-      };
-    });
-  };
-
-  const isMinimumSelected = formData.following.length >= 3;
-
-  if (isLoading) {
-    return (
-      <div className="text-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
-        <p className="text-gray-500 mt-2">Loading suggestions...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center py-8">
-        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <XCircle className="w-8 h-8 text-red-500" />
-        </div>
-        <h3 className="text-lg font-semibold text-gray-800 mb-2">Error Loading Users</h3>
-        <p className="text-gray-600 mb-4">{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600"
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <h3 className="text-lg font-semibold text-gray-800 mb-2">
-          Build Your Network
-        </h3>
-        <p className="text-gray-600 mb-4">
-          Follow at least 3 people to get started
-        </p>
-        
-        <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full ${
-          isMinimumSelected ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-        }`}>
-          <span className="text-sm font-medium">
-            {formData.following.length}/3 selected
-          </span>
-          {isMinimumSelected && <Check size={16} />}
-        </div>
-      </div>
-
-      <div className="space-y-3 max-h-80 overflow-y-auto">
-        {suggestedUsers.length > 0 ? (
-          suggestedUsers.map((user) => {
-            const isFollowing = formData.following.includes(user._id);
-            
-            return (
-              <motion.div
-                key={user._id}
-                whileHover={{ scale: 1.02 }}
-                className="p-4 rounded-xl border-2 border-gray-200 bg-white transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3 flex-1">
-                    <div className={`w-12 h-12 flex items-center justify-center rounded-full text-xl ${
-                      isFollowing ? 'bg-purple-100 border-2 border-purple-500' : 'bg-gray-100'
-                    }`}>
-                      {user.avatar || '👤'}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-gray-800 truncate">
-                        {user.name || 'Unknown User'}
-                      </h4>
-                      <p className="text-sm text-gray-500 truncate">
-                        @{user.username || 'No username'}
-                      </p>
-                      <p className="text-xs text-gray-400 capitalize truncate">
-                        {user.role || 'User'} 
-                        {user.semester && ` • ${user.semester} semester`}
-                        {user.batch && ` • Batch ${user.batch}`}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={() => toggleFollow(user._id)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium text-sm transition-all ${
-                      isFollowing
-                        ? 'bg-gray-500 text-white hover:bg-gray-600'
-                        : 'bg-purple-500 text-white hover:bg-purple-600'
-                    }`}
-                  >
-                    {isFollowing ? (
-                      <>
-                        <Check size={16} />
-                        Following
-                      </>
-                    ) : (
-                      <>
-                        <UserPlus size={16} />
-                        Follow
-                      </>
-                    )}
-                  </button>
-                </div>
-              </motion.div>
-            );
-          })
-        ) : (
-          <div className="text-center py-8">
-            <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">No users available to follow yet</p>
-            <p className="text-gray-400 text-sm mt-1">
-              There might be no other users in the system yet.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {!isMinimumSelected && formData.following.length > 0 && (
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-center text-orange-500 text-sm font-medium"
-        >
-          Follow {3 - formData.following.length} more to continue
-        </motion.p>
-      )}
-
-      {isMinimumSelected && (
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-center text-green-600 text-sm font-medium"
-        >
-          Perfect! You can now continue
-        </motion.p>
-      )}
-    </div>
-  );
-};
 
   const steps = [
     {
-      title: " Welcome to Trendzz!",
+      title: "Welcome to Trendzz!",
       subtitle: "Let's setup your amazing profile",
       description: "We're excited to have you! Complete your profile to get personalized experience.",
-      icon: <Sparkles className="w-12 h-12 text-yellow-500" />
+      icon: <Sparkles className="w-12 h-12 text-purple-500" />
     },
     {
-      title: "👤 Choose Your Identity",
+      title: "Choose Your Identity",
       subtitle: "Pick a cool username & avatar",
       description: "Your username is your unique identity on Trendzz",
       icon: <User className="w-12 h-12 text-blue-500" />,
       component: <UsernameStep />
     },
     {
-      title: "🎓 Tell Us About You",
+      title: "Tell Us About You",
       subtitle: "Are you a student or faculty member?",
       description: "This helps us connect you with relevant content",
       icon: <GraduationCap className="w-12 h-12 text-green-500" />,
       component: <RoleStep />
     },
     {
-      title: "📚 Academic Details",
+      title: "Academic Details",
       subtitle: "Share your academic information",
       description: "Connect with peers and educators",
       component: <AcademicStep />
-    },
-    {
-      title: "🤝 Build Your Network",
-      subtitle: "Follow at least 3 people to get started",
-      description: "Discover amazing content from your network",
-      icon: <Users className="w-12 h-12 text-purple-500" />,
-      component: <FollowStep />
     }
   ];
 
@@ -545,49 +427,46 @@ const FollowStep = () => {
       case 1: return formData.username && formData.username.length >= 3;
       case 2: return formData.role;
       case 3: return formData.role === 'student' ? formData.semester && formData.batch : true;
-      case 4: return formData.following.length >= 3;
       default: return true;
     }
   };
 
-  // UPDATE THIS FUNCTION IN Onboarding.jsx
+  // FIXED: Simple handleComplete function that uses AuthContext
   const handleComplete = async () => {
     try {
       console.log('Final Form Data:', formData);
 
-      // ✅ SEND DATA TO BACKEND
-      const response = await API.put('/auth/profile', formData);
+      const onboardingData = {
+        username: formData.username,
+        avatar: formData.avatar,
+        role: formData.role,
+        semester: formData.semester,
+        batch: formData.batch,
+        subjects: formData.subjects,
+        name: formData.username,
+        bio: `Hey! I'm ${formData.username} on Trendzz!`,
+        firstLogin: false
+      };
 
-      if (response.data.success) {
-        // Complete onboarding and update user data in context
-        const userProfile = {
-          ...response.data.user,
-          firstLogin: false // Mark onboarding as complete
-        };
+      console.log('📦 Sending onboarding data via AuthContext...');
 
-        completeOnboarding(userProfile);
-
-        console.log('Onboarding completed successfully:', userProfile);
-
-        // Navigate to home page
-        navigate("/", { replace: true });
-      } else {
-        throw new Error(response.data.message);
-      }
+      // Use the AuthContext's completeOnboarding function
+      const userProfile = await completeOnboarding(onboardingData);
+      
+      console.log('✅ Onboarding completed successfully!', userProfile);
+      navigate("/", { replace: true });
 
     } catch (error) {
-      console.error('Error completing onboarding:', error);
-
-      // Show specific error message
+      console.error('❌ Error completing onboarding:', error);
+      
       const errorMessage = error.response?.data?.message ||
         error.message ||
         'Failed to complete profile. Please try again.';
 
-      alert(errorMessage);
+      alert(`Error: ${errorMessage}`);
 
-      // If username conflict, go back to username step
       if (error.response?.data?.message?.includes('Username already taken')) {
-        setCurrentStep(1); // Go back to username step
+        setCurrentStep(1);
       }
     }
   };
@@ -595,16 +474,18 @@ const FollowStep = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-purple-800 flex items-center justify-center p-4">
       <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
         className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden"
       >
+        {/* Progress Bar */}
         <div className="h-2 bg-gray-200">
           <motion.div
             className="h-full bg-gradient-to-r from-purple-500 to-pink-500"
             initial={{ width: 0 }}
             animate={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
-            transition={{ duration: 0.5 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
           />
         </div>
 
@@ -612,78 +493,115 @@ const FollowStep = () => {
           <AnimatePresence mode="wait">
             <motion.div
               key={currentStep}
-              initial={{ opacity: 0, x: 50 }}
+              initial={{ opacity: 0, x: 30 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
+              exit={{ opacity: 0, x: -30 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
               className="text-center"
             >
               {steps[currentStep].icon && (
-                <div className="flex justify-center mb-6">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 200, delay: 0.1 }}
+                  className="flex justify-center mb-6"
+                >
                   {steps[currentStep].icon}
-                </div>
+                </motion.div>
               )}
 
-              <h2 className="text-3xl font-bold text-gray-800 mb-2">
+              <motion.h2 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="text-2xl font-bold text-gray-800 mb-3"
+              >
                 {steps[currentStep].title}
-              </h2>
-              <p className="text-lg text-purple-600 font-semibold mb-2">
+              </motion.h2>
+              
+              <motion.p
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="text-purple-600 font-semibold mb-3"
+              >
                 {steps[currentStep].subtitle}
-              </p>
-              <p className="text-gray-600 mb-8">
+              </motion.p>
+              
+              <motion.p
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="text-gray-600 mb-8 leading-relaxed"
+              >
                 {steps[currentStep].description}
-              </p>
+              </motion.p>
 
-              <div className="mb-8">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.5 }}
+                className="mb-8"
+              >
                 {steps[currentStep].component}
-              </div>
+              </motion.div>
 
-              <div className="flex justify-between items-center">
-                <button
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+                className="flex justify-between items-center"
+              >
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={prevStep}
-                  className={`flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all ${currentStep === 0
-                      ? 'invisible'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
+                  className={`px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition font-medium ${
+                    currentStep === 0 ? 'invisible' : ''
+                  }`}
                 >
-                  <ArrowLeft size={20} />
+                  <ArrowLeft size={20} className="inline mr-2" />
                   Back
-                </button>
+                </motion.button>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
                   {steps.map((_, index) => (
-                    <div
+                    <motion.div
                       key={index}
-                      className={`w-2 h-2 rounded-full transition-all ${index === currentStep
+                      whileHover={{ scale: 1.2 }}
+                      className={`w-2 h-2 rounded-full transition-all ${
+                        index === currentStep
                           ? 'bg-purple-500 w-6'
                           : index < currentStep
                             ? 'bg-green-500'
                             : 'bg-gray-300'
-                        }`}
+                      }`}
                     />
                   ))}
                 </div>
 
-                <button
+                <motion.button
+                  whileHover={{ scale: canProceed() ? 1.05 : 1 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={currentStep === steps.length - 1 ? handleComplete : nextStep}
                   disabled={!canProceed()}
-                  className={`flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all shadow-lg ${canProceed()
-                      ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600'
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    }`}
+                  className={`px-6 py-3 bg-blue-900 text-white rounded-lg hover:bg-red-700 transition font-medium ${
+                    !canProceed() ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
                 >
                   {currentStep === steps.length - 1 ? (
                     <>
                       Complete Setup
-                      <Check size={20} />
+                      <Check size={20} className="inline ml-2" />
                     </>
                   ) : (
                     <>
                       Continue
-                      <ArrowRight size={20} />
+                      <ArrowRight size={20} className="inline ml-2" />
                     </>
                   )}
-                </button>
-              </div>
+                </motion.button>
+              </motion.div>
             </motion.div>
           </AnimatePresence>
         </div>

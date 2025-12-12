@@ -1,3 +1,5 @@
+// frontend/src/services/chat.js
+
 import API from "./api";
 
 // Chat APIs
