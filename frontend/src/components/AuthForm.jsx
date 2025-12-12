@@ -49,49 +49,105 @@ export default function AuthForm({ isLogin, toggleMode }) {
     setLoading(true);
 
     try {
+      console.log('🚀 Starting auth process...');
+      console.log('📝 Form data:', form);
+      console.log('🔑 Mode:', isLogin ? 'Login' : 'Register');
+
       if (isLogin) {
+        // LOGIN
+        console.log('📡 Calling login API...');
         const res = await apiLogin({ email: form.email, password: form.password });
-        const token = res.data.token || (res.data && res.data.token) || res.data;
-        const firstLogin = res.data.firstLogin; // ✅ GET firstLogin FROM RESPONSE
         
-        if (!token) throw new Error("No token in response");
-        
-        // ✅ UPDATED: Pass user data with firstLogin status
-        setAuthToken(token, { 
-          email: form.email, 
-          firstLogin: firstLogin !== undefined ? firstLogin : true,
-          name: form.name || '' 
+        console.log('📦 Login response:', res);
+        console.log('🔍 Response structure:', {
+          data: res.data,
+          status: res.status,
+          hasToken: !!(res.data?.token)
         });
+
+        // ✅ FIXED: Extract token and user data properly
+        const responseData = res.data || res;
+        const token = responseData.token || responseData.data?.token || responseData.accessToken;
+        const user = responseData.user || responseData.data?.user || {
+          email: form.email,
+          name: form.name || '',
+          firstLogin: responseData.firstLogin !== false
+        };
+
+        console.log('🔑 Extracted token:', token ? 'Yes' : 'No');
+        console.log('👤 Extracted user:', user);
+
+        if (!token) {
+          throw new Error("No token in response. Response: " + JSON.stringify(responseData));
+        }
+        
+        // ✅ FIXED: Pass token and user data
+        setAuthToken(token, user);
         
         // ✅ REDIRECT TO ONBOARDING FOR NEW USERS
-        if (firstLogin !== false) {
+        if (user.firstLogin !== false) {
+          console.log('🎯 Redirecting to onboarding (first login)');
           navigate("/onboarding");
         } else {
+          console.log('🎯 Redirecting to home (not first login)');
           navigate("/");
         }
       } else {
-        await apiRegister({ name: form.name, email: form.email, password: form.password });
-        const res = await apiLogin({ email: form.email, password: form.password });
-        const token = res.data.token || res.data;
-        const firstLogin = res.data.firstLogin;
-        
-        // ✅ UPDATED: Pass user data with firstLogin status  
-        setAuthToken(token, { 
+        // REGISTER
+        console.log('📡 Calling register API...');
+        const registerRes = await apiRegister({ 
+          name: form.name, 
           email: form.email, 
-          firstLogin: firstLogin !== undefined ? firstLogin : true,
-          name: form.name 
+          password: form.password 
         });
         
+        console.log('📦 Register response:', registerRes);
+        
+        // ✅ FIXED: After registration, auto-login
+        console.log('📡 Auto-login after registration...');
+        const loginRes = await apiLogin({ email: form.email, password: form.password });
+        
+        const loginData = loginRes.data || loginRes;
+        const token = loginData.token || loginData.data?.token || loginData.accessToken;
+        const user = loginData.user || loginData.data?.user || {
+          email: form.email,
+          name: form.name,
+          firstLogin: true
+        };
+
+        console.log('🔑 Registration token:', token ? 'Yes' : 'No');
+        console.log('👤 Registration user:', user);
+
+        if (!token) {
+          throw new Error("No token after registration. Response: " + JSON.stringify(loginData));
+        }
+        
+        // ✅ FIXED: Pass token and user data
+        setAuthToken(token, user);
+        
         // ✅ NEW USERS ALWAYS GO TO ONBOARDING
+        console.log('🎯 Redirecting new user to onboarding');
         navigate("/onboarding");
       }
     } catch (err) {
-      console.error(err);
-      if (err.response && err.response.data && err.response.data.message) {
-        setError(err.response.data.message);
-      } else {
-        setError(err.message || "Something went wrong");
+      console.error('❌ Auth error:', err);
+      console.error('❌ Error details:', err.response?.data || err.message);
+      
+      // ✅ FIXED: Better error message extraction
+      let errorMessage = "Something went wrong";
+      
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err.message) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
       }
+      
+      setError(errorMessage);
+      
     } finally {
       setLoading(false);
     }
@@ -108,7 +164,11 @@ export default function AuthForm({ isLogin, toggleMode }) {
         {isLogin ? "Welcome Back" : "Create your account"}
       </h2>
 
-      {error && <div className="bg-red-600 text-white p-2 rounded mb-3 text-sm">{error}</div>}
+      {error && (
+        <div className="bg-red-600 text-white p-2 rounded mb-3 text-sm">
+          {error}
+        </div>
+      )}
 
       <form onSubmit={submit} className="flex flex-col space-y-3">
         {!isLogin && (
@@ -120,6 +180,7 @@ export default function AuthForm({ isLogin, toggleMode }) {
               placeholder="Full name"
               className="p-3 rounded-lg bg-gray-700 focus:outline-none focus:ring-2 focus:ring-pink-400 text-white placeholder-gray-400"
               required={!isLogin}
+              disabled={loading}
             />
             {formErrors.name && <span className="text-red-400 text-sm">{formErrors.name}</span>}
           </>
@@ -134,6 +195,7 @@ export default function AuthForm({ isLogin, toggleMode }) {
             type="email"
             className="p-3 rounded-lg bg-gray-700 focus:outline-none focus:ring-2 focus:ring-pink-400 text-white placeholder-gray-400"
             required
+            disabled={loading}
           />
           {formErrors.email && <span className="text-red-400 text-sm">{formErrors.email}</span>}
         </>
@@ -147,6 +209,7 @@ export default function AuthForm({ isLogin, toggleMode }) {
             type="password"
             className="p-3 rounded-lg bg-gray-700 focus:outline-none focus:ring-2 focus:ring-pink-400 text-white placeholder-gray-400"
             required
+            disabled={loading}
           />
           {formErrors.password && <span className="text-red-400 text-sm">{formErrors.password}</span>}
         </>
@@ -164,7 +227,11 @@ export default function AuthForm({ isLogin, toggleMode }) {
 
       <p className="mt-4 text-center text-gray-300">
         {isLogin ? "Don't have an account?" : "Already have an account?"}
-        <button onClick={toggleMode} className="text-pink-400 font-semibold ml-2 hover:text-pink-300 transition-colors">
+        <button 
+          onClick={toggleMode} 
+          className="text-pink-400 font-semibold ml-2 hover:text-pink-300 transition-colors"
+          disabled={loading}
+        >
           {isLogin ? "Register" : "Login"}
         </button>
       </p>

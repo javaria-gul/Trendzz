@@ -2,6 +2,7 @@ import express from "express";
 import User from "../models/User.js";
 import requireAuth from "../middleware/authMiddleware.js";
 
+
 const router = express.Router();
 
 // Search users
@@ -516,6 +517,7 @@ router.get("/debug/all-users", requireAuth, async (req, res) => {
     });
   }
 });
+
 
 // Get suggested users for onboarding
 router.get("/suggested-users", requireAuth, async (req, res) => {
