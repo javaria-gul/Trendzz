@@ -204,12 +204,16 @@ export const uploadProfileImage = async (req, res) => {
   }
 };
 
+// In userController.js - UPDATE registerUser and loginUser
 export const registerUser = async (req, res) => {
   const { name, email, password } = req.body;
 
   try {
     const userExists = await User.findOne({ email });
-    if (userExists) return res.status(400).json({ message: "User already exists" });
+    if (userExists) return res.status(400).json({ 
+      success: false,  // ✅ Add success flag
+      message: "User already exists" 
+    });
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -217,19 +221,29 @@ export const registerUser = async (req, res) => {
       name, 
       email, 
       password: hashedPassword,
-      blockedUsers: [] // Initialize empty blockedUsers array
+      blockedUsers: []
     });
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "30d" });
 
     res.status(201).json({ 
-      _id: user._id, 
-      name: user.name, 
-      email: user.email, 
-      token 
+      success: true,  // ✅ Add success flag
+      message: "Registration successful",
+      token,  // ✅ Keep token at root
+      user: {  // ✅ Wrap user data in user object
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        username: user.username || '',
+        profilePicture: user.profilePicture || '',
+        firstLogin: user.firstLogin !== false
+      }
     });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ 
+      success: false,
+      message: "Server error" 
+    });
   }
 };
 
@@ -243,20 +257,33 @@ export const loginUser = async (req, res) => {
       const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "30d" });
       
       res.json({ 
-        _id: user._id, 
-        name: user.name, 
-        email: user.email, 
-        firstLogin: user.firstLogin,
-        blockedUsers: user.blockedUsers || [], // Include blockedUsers in response
-        token 
+        success: true,  // ✅ Add success flag
+        message: "Login successful",
+        token,  // ✅ Keep token at root
+        user: {  // ✅ Wrap user data in user object
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          username: user.username || '',
+          profilePicture: user.profilePicture || '',
+          firstLogin: user.firstLogin !== false,
+          blockedUsers: user.blockedUsers || []
+        }
       });
     } else {
-      res.status(400).json({ message: "Invalid credentials" });
+      res.status(400).json({ 
+        success: false,
+        message: "Invalid credentials" 
+      });
     }
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ 
+      success: false,
+      message: "Server error" 
+    });
   }
 };
+
 
 // Get other user's profile
 export const getOtherUserProfile = async (req, res) => {

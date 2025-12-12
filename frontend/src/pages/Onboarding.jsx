@@ -432,44 +432,53 @@ const Onboarding = () => {
   };
 
   // FIXED: Simple handleComplete function that uses AuthContext
-  const handleComplete = async () => {
-    try {
-      console.log('Final Form Data:', formData);
+// Onboarding.js - handleComplete function mein thoda debugging add karo
+const handleComplete = async () => {
+  try {
+    console.log('🎯 [Onboarding] handleComplete called');
+    console.log('📦 Form data:', formData);
 
-      const onboardingData = {
-        username: formData.username,
-        avatar: formData.avatar,
-        role: formData.role,
-        semester: formData.semester,
-        batch: formData.batch,
-        subjects: formData.subjects,
-        name: formData.username,
-        bio: `Hey! I'm ${formData.username} on Trendzz!`,
-        firstLogin: false
-      };
+    const onboardingData = {
+      username: formData.username,
+      avatar: formData.avatar,
+      role: formData.role,
+      semester: formData.semester,
+      batch: formData.batch,
+      subjects: formData.subjects,
+      name: formData.username,
+      bio: `Hey! I'm ${formData.username} on Trendzz!`,
+      firstLogin: false
+    };
 
-      console.log('📦 Sending onboarding data via AuthContext...');
+    console.log('📤 [Onboarding] Sending to completeOnboarding:', onboardingData);
 
-      // Use the AuthContext's completeOnboarding function
-      const userProfile = await completeOnboarding(onboardingData);
-      
-      console.log('✅ Onboarding completed successfully!', userProfile);
-      navigate("/", { replace: true });
+    // Use the AuthContext's completeOnboarding function
+    const userProfile = await completeOnboarding(onboardingData);
+    
+    console.log('✅ [Onboarding] Success! User profile:', userProfile);
+    
+    // Navigate to home
+    navigate("/", { replace: true });
 
-    } catch (error) {
-      console.error('❌ Error completing onboarding:', error);
-      
-      const errorMessage = error.response?.data?.message ||
-        error.message ||
-        'Failed to complete profile. Please try again.';
+  } catch (error) {
+    console.error('❌ [Onboarding] Error:', error);
+    console.error('❌ Error details:', {
+      message: error.message,
+      response: error.response,
+      success: error.success
+    });
+    
+    const errorMessage = error.message ||
+      error.response?.data?.message ||
+      'Failed to complete profile. Please try again.';
 
-      alert(`Error: ${errorMessage}`);
+    alert(`Error: ${errorMessage}`);
 
-      if (error.response?.data?.message?.includes('Username already taken')) {
-        setCurrentStep(1);
-      }
+    if (errorMessage.includes('Username already taken')) {
+      setCurrentStep(1);
     }
-  };
+  }
+};
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-purple-800 flex items-center justify-center p-4">

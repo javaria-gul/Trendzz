@@ -10,8 +10,8 @@ export const requireAuth = async (req, res, next) => {
     if (!authHeader?.startsWith("Bearer ")) {
       console.log("❌ No Bearer token found");
       return res.status(401).json({ 
-        success: false,
-        message: "Unauthorized: token missing" 
+        success: false,  // ✅ Master Prompt format
+        message: "No authentication token, access denied" 
       });
     }
     
@@ -19,10 +19,13 @@ export const requireAuth = async (req, res, next) => {
     console.log("✅ Token extracted");
     
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    console.log("✅ Token decoded - User ID:", payload.id);
+    console.log("✅ Token decoded - User ID:", payload.id || payload.userId);
     
-    // ✅ FIX: Fetch full user from database and attach to req.user
-    const user = await User.findById(payload.id).select("-password");
+    // ✅ Master Prompt expects 'userId' field
+    const userId = payload.userId || payload.id;
+    
+    // Fetch full user from database
+    const user = await User.findById(userId).select("-password");
     
     if (!user) {
       console.log("❌ User not found in database");
@@ -32,9 +35,11 @@ export const requireAuth = async (req, res, next) => {
       });
     }
     
-    // ✅ FIX: Attach full user object (not just {id: ...})
+    // ✅ Attach both user and userId (Master Prompt uses both)
     req.user = user;
-    console.log("✅ User attached to request - ID:", user._id, "Name:", user.name);
+    req.userId = user._id;  // ✅ Master Prompt expects req.userId
+    
+    console.log("✅ User attached - ID:", user._id, "Username:", user.username);
     
     next();
   } catch (err) {
@@ -43,20 +48,20 @@ export const requireAuth = async (req, res, next) => {
     if (err.name === 'JsonWebTokenError') {
       return res.status(401).json({ 
         success: false,
-        message: "Invalid token" 
+        message: "Token is invalid or expired"  // ✅ Master Prompt message
       });
     }
     
     if (err.name === 'TokenExpiredError') {
       return res.status(401).json({ 
         success: false,
-        message: "Token expired" 
+        message: "Token is invalid or expired" 
       });
     }
     
     return res.status(401).json({ 
-      success: false,
-      message: "Unauthorized", 
+      success: false,  // ✅ Master Prompt format
+      message: "Token is invalid or expired",
       error: err.message 
     });
   }

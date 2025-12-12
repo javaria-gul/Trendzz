@@ -445,5 +445,66 @@ const ChatWindow = () => {
     </div>
   );
 };
+// ChatWindow.jsx - Yeh temporary debug version
+const renderMessage = (message) => {
+  // EXTENSIVE DEBUGGING
+  console.log('🔍 === MESSAGE DEBUG START ===');
+  console.log('💬 Message Object:', JSON.stringify(message, null, 2));
+  console.log('👤 Message Sender:', message.sender);
+  console.log('🆔 Message Sender ID:', message.sender?._id, 'Type:', typeof message.sender?._id);
+  console.log('👤 Current User:', userData);
+  console.log('🆔 Current User ID:', userData?._id, 'Type:', typeof userData?._id);
+  
+  // Multiple comparison methods
+  const comparison1 = message.sender?._id === userData?._id;
+  const comparison2 = message.sender?._id?.toString() === userData?._id?.toString();
+  const comparison3 = String(message.sender?._id) === String(userData?._id);
+  
+  console.log('🔀 Comparisons:', {
+    direct: comparison1,
+    toString: comparison2, 
+    String: comparison3
+  });
+  
+  console.log('🔍 === MESSAGE DEBUG END ===');
+  
+  // Use the most reliable comparison
+  const isCurrentUser = String(message.sender?._id) === String(userData?._id);
+
+  return (
+    <div
+      key={message._id}
+      className={`flex ${isCurrentUser ? "justify-end" : "justify-start"}`}
+    >
+      <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${
+        isCurrentUser 
+          ? "bg-blue-500 text-white rounded-br-none" 
+          : "bg-white text-gray-800 rounded-bl-none border border-gray-200"
+      }`}>
+        <p className="text-sm">
+          {message.text}
+          <span className="text-xs ml-2 opacity-70">
+            ({isCurrentUser ? 'YOU' : 'THEM'})
+            <br/>
+            Sender: {message.sender?._id?.toString().substring(0, 8)}...
+            <br/>
+            Current: {userData?._id?.toString().substring(0, 8)}...
+          </span>
+        </p>
+        <div className={`flex items-center justify-end mt-1 ${
+          isCurrentUser ? "text-blue-100" : "text-gray-400"
+        }`}>
+          <span className="text-xs">
+            {new Date(message.createdAt).toLocaleTimeString([], { 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            })}
+          </span>
+          {isCurrentUser && getMessageStatus(message)}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default ChatWindow;
