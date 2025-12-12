@@ -1,44 +1,43 @@
-// src/services/api.js (FIXED VERSION)
+// src/services/api.js (COMPLETE FIXED VERSION)
 import axios from "axios";
 
-const BASE_URL = "http://localhost:5000/api"; // ✅ Correct
+const BASE_URL = "http://localhost:5000/api";
 
+// Create axios instance
 const API = axios.create({
-  baseURL: `${BASE_URL}`,  // ✅ Ye banega: "http://localhost:5000/api"
+  baseURL: BASE_URL,
   timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
 });
 
-// ✅ FIXED: Request interceptor
+// ✅ SINGLE Request Interceptor
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem("trendzz_token");
   
-  // Always add Authorization header if token exists
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   
-  // Don't overwrite Content-Type if it's multipart/form-data
-  if (!config.headers['Content-Type']) {
-    config.headers['Content-Type'] = 'application/json';
+  // For multipart/form-data, don't overwrite Content-Type
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
   }
   
   console.log('📡 API Request:', {
     url: config.url,
     method: config.method,
-    hasToken: !!token,
-    contentType: config.headers['Content-Type']
+    hasToken: !!token
   });
   
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
   return config;
 }, (error) => {
   console.error('❌ Request interceptor error:', error);
   return Promise.reject(error);
 });
 
-// ✅ FIXED: Response interceptor - Return consistent format
+// ✅ SINGLE Response Interceptor
 API.interceptors.response.use(
   (response) => {
     console.log('✅ API Response:', {
@@ -47,13 +46,8 @@ API.interceptors.response.use(
       data: response.data
     });
     
-    // ✅ RETURN CONSISTENT FORMAT
-    return {
-      success: response.data?.success !== false,
-      data: response.data,
-      status: response.status,
-      headers: response.headers
-    };
+    // Return axios response object directly
+    return response;
   },
   (error) => {
     console.error('❌ API Error:', {
@@ -63,74 +57,88 @@ API.interceptors.response.use(
       response: error.response?.data
     });
     
+    // Handle 401 Unauthorized
     if (error.response?.status === 401) {
       localStorage.removeItem("trendzz_token");
+      localStorage.removeItem("trendzz_user");
       window.location.href = "/login";
     }
     
-    // ✅ Return consistent error format
+    // Return error in consistent format
     return Promise.reject({
       success: false,
       message: error.response?.data?.message || error.message || 'Network error',
-      data: error.response?.data,
-      error: error
+      status: error.response?.status,
+      data: error.response?.data
     });
   }
 );
 
-// ✅ POSTS API - FIXED
+// ✅ CHAT API (Add this section)
+export const chatAPI = {
+  // Get all chats
+  getChats: () => API.get('/chats'),
+  
+  // Start a new chat
+  startChat: (receiverId) => API.post('/chats/start', { receiverId }),
+  
+  // Get messages for a chat
+  getMessages: (chatId, page = 1) => 
+    API.get(`/chats/${chatId}/messages`, { params: { page } }),
+  
+  // Send a message
+  sendMessage: (chatId, messageData) => 
+    API.post(`/chats/${chatId}/messages`, messageData),
+  
+  // Mark messages as read
+  markAsRead: (chatId) => 
+    API.put(`/chats/${chatId}/read`),
+  
+  // Delete a message
+  deleteMessage: (messageId) => 
+    API.delete(`/messages/${messageId}`),
+  
+  // React to a message
+  reactToMessage: (messageId, emoji) => 
+    API.post(`/messages/${messageId}/react`, { emoji }),
+};
+
+// ✅ POSTS API
 export const postsAPI = {
-  // Create post with media - FIXED DOUBLE /API
   createPost: async (formData, onUploadProgress) => {
-    console.log('📤 Creating post with formData:', {
-      hasFiles: formData.getAll('files').length,
-      content: formData.get('content'),
-      location: formData.get('location')
-    });
-    
     try {
       const token = localStorage.getItem("trendzz_token");
       if (!token) {
         throw new Error('No authentication token found');
       }
       
-      // ✅ FIXED: Remove extra /api (was: ${BASE_URL}/api/posts)
       const response = await axios.post(`${BASE_URL}/posts`, formData, {
         headers: { 
-          'Content-Type': 'multipart/form-data',
           'Authorization': `Bearer ${token}`
+          // Don't set Content-Type for FormData
         },
         onUploadProgress
       });
       
-      console.log('✅ Post created response:', response.data);
       return response.data;
-      
     } catch (error) {
       console.error('❌ Create post error:', error);
       throw error.response?.data || error;
     }
   },
   
-  // Get all posts
   getPosts: (page = 1, limit = 10) => 
     API.get('/posts', { params: { page, limit } }),
   
-  // Get user's posts
   getUserPosts: (userId, page = 1, limit = 10) => 
     API.get(`/posts/user/${userId}`, { params: { page, limit } }),
   
-  // Toggle like
-  likePost: (postId) => 
-   API.post(`/posts/${postId}/like`),
+  likePost: (postId) => API.post(`/posts/${postId}/like`),
   
-  // Add comment
   addComment: (postId, text) => 
     API.post('/posts/comment', { postId, text }),
   
-  // Delete post
-  deletePost: (postId) => 
-    API.delete(`/posts/${postId}`),
+  deletePost: (postId) => API.delete(`/posts/${postId}`),
 };
 
 // ✅ AUTH API
@@ -140,22 +148,5 @@ export const authAPI = {
   testConnection: () => API.get('/auth/test-connection'),
   logout: () => API.post('/auth/logout'),
 };
-
-
-// Response interceptor to handle errors
-API.interceptors.response.use(
-  (response) => {
-    return response;
-  },
-  (error) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid
-      localStorage.removeItem("trendzz_token");
-      localStorage.removeItem("trendzz_user");
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
-  }
-);
 
 export default API;

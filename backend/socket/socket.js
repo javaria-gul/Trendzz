@@ -1,3 +1,5 @@
+// backend/socket/socket.js
+
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";

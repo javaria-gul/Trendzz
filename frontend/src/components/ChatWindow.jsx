@@ -1,6 +1,8 @@
+// frontend/src/components/ChatWindow.jsx
+
 import React, { useState, useRef, useEffect, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Send, Image, Paperclip, Smile, MoreVertical, ArrowLeft, Check, CheckCheck } from "lucide-react";
+import { Send, ArrowLeft, Loader2 } from "lucide-react";
 import { getMessages, markAsRead, startChat, getChats } from "../services/chat";
 import { SocketContext } from "../context/SocketContext";
 import { AuthContext } from "../context/AuthContext";
@@ -11,496 +13,289 @@ const ChatWindow = () => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [chat, setChat] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [typingUsers, setTypingUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef(null);
   
   const { socket } = useContext(SocketContext);
   const { userData } = useContext(AuthContext);
 
-  // DEBUG: Check user data
+  // **STEP 1: Check ALL data on mount**
   useEffect(() => {
-    console.log("🔄 ChatWindow - Current UserData:", userData);
-    console.log("🔄 ChatWindow - User ID:", userData?._id);
-  }, [userData]);
+    console.log("========== CHATWINDOW DEBUG ==========");
+    console.log("🔍 URL Parameters:", { chatId, userId });
+    console.log("👤 User Data:", userData);
+    console.log("🔑 Token:", localStorage.getItem("trendzz_token"));
+    console.log("🔌 Socket:", socket ? "Connected" : "Not connected");
+    console.log("======================================");
+  }, []);
 
-  // Track temporary messages
-  const tempMessagesRef = useRef(new Set());
-
-  // Initialize chat
+  // **STEP 2: Simple chat load function**
   useEffect(() => {
-    const initializeChat = async () => {
+    const loadChat = async () => {
+      console.log("🚀 loadChat function triggered");
       setLoading(true);
-      setMessages([]);
-      tempMessagesRef.current.clear();
       
       try {
-        let currentChatId = chatId;
-        
+        // Case A: Start new chat
         if (userId && !chatId) {
-          console.log('🆕 Starting new chat with user:', userId);
-          const chatResponse = await startChat(userId);
-          if (chatResponse.data.success) {
-            currentChatId = chatResponse.data.data._id;
-            setChat(chatResponse.data.data);
-            navigate(`/chat/${currentChatId}`, { replace: true });
+          console.log("🆕 Trying to start chat with user:", userId);
+          
+          // First test API connection
+          try {
+            const testResponse = await fetch("http://localhost:5000/api/auth/test-connection", {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem("trendzz_token")}`
+              }
+            });
+            console.log("🌐 API Connection Test:", await testResponse.json());
+          } catch (testError) {
+            console.error("❌ API Connection Failed:", testError);
           }
-        } else if (chatId) {
-          const chatsResponse = await getChats();
-          if (chatsResponse.data.success) {
-            const currentChat = chatsResponse.data.data.find(c => c._id === chatId);
-            setChat(currentChat);
+          
+          const response = await startChat(userId);
+          console.log("📦 startChat RAW Response:", response);
+          
+          if (response.data?.success) {
+            const newChat = response.data.data;
+            console.log("✅ Chat created successfully:", newChat);
+            navigate(`/chat/${newChat._id}`, { replace: true });
+            return;
+          } else {
+            console.error("❌ startChat failed:", response.data);
+            alert("Failed to start chat: " + (response.data?.message || "Unknown error"));
+            navigate("/chat");
+            return;
           }
         }
         
-        if (currentChatId) {
-          const messagesResponse = await getMessages(currentChatId);
-          if (messagesResponse.data.success) {
-            setMessages(messagesResponse.data.data);
-            await markAsRead(currentChatId);
+        // Case B: Load existing chat
+        if (chatId) {
+          console.log(`📂 Loading chat ${chatId}`);
+          
+          // Test 1: Get chats list
+          console.log("📋 Fetching chats list...");
+          const chatsResponse = await getChats();
+          console.log("📦 getChats Response:", chatsResponse);
+          
+          if (chatsResponse.data?.success) {
+            const chatList = chatsResponse.data.data || [];
+            console.log(`📊 Found ${chatList.length} chats`);
+            
+            const foundChat = chatList.find(c => c._id === chatId);
+            if (foundChat) {
+              console.log("✅ Chat found:", foundChat);
+              setChat(foundChat);
+            } else {
+              console.log(`⚠️ Chat ${chatId} not found in list`);
+              setChat({ _id: chatId, participants: [] });
+            }
+          }
+          
+          // Test 2: Get messages
+          console.log("💬 Fetching messages...");
+          const messagesResponse = await getMessages(chatId);
+          console.log("📦 getMessages Response:", messagesResponse);
+          
+          if (messagesResponse.data?.success) {
+            const loadedMessages = messagesResponse.data.data || [];
+            console.log(`✅ Loaded ${loadedMessages.length} messages`);
+            setMessages(loadedMessages);
+            
+            // Mark as read
+            try {
+              await markAsRead(chatId);
+              console.log("✅ Messages marked as read");
+            } catch (error) {
+              console.log("⚠️ Could not mark as read:", error.message);
+            }
           }
         }
         
       } catch (error) {
-        console.error("Error initializing chat:", error);
-        alert(error.response?.data?.message || "Failed to load chat");
+        console.error("❌ Chat load ERROR:", error);
+        console.error("Error Details:", {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+          config: error.config
+        });
+        
+        // Show specific error message
+        let errorMsg = "Failed to load chat. ";
+        if (error.response?.status === 401) {
+          errorMsg += "You are not logged in. Please login again.";
+          localStorage.removeItem("trendzz_token");
+          navigate("/login");
+        } else if (error.response?.status === 404) {
+          errorMsg += "Chat not found.";
+        } else if (error.response?.data?.message) {
+          errorMsg += error.response.data.message;
+        } else if (error.message.includes("Network Error")) {
+          errorMsg += "Cannot connect to server. Make sure backend is running.";
+        }
+        
+        console.error("🚨 Error Message:", errorMsg);
+        alert(errorMsg);
+        
       } finally {
         setLoading(false);
+        console.log("🏁 Chat load completed (loading set to false)");
       }
     };
 
+    // Only load if we have chatId or userId
     if (chatId || userId) {
-      initializeChat();
+      console.log("✅ Conditions met, loading chat...");
+      loadChat();
+    } else {
+      console.log("⚠️ No chatId or userId, skipping load");
+      setLoading(false);
     }
   }, [chatId, userId, navigate]);
 
-  // Socket listeners
+  // Auto-scroll
   useEffect(() => {
-    if (socket && chatId) {
-      socket.emit("join_chat", chatId);
-      
-      const handleNewMessage = (data) => {
-        if (data.chatId === chatId) {
-          console.log('📨 Real message received via socket:', data.message);
-          console.log('👤 Message Sender ID:', data.message.sender._id);
-          console.log('👤 Current User ID:', userData?._id);
-          
-          setMessages(prev => {
-            // Check if this message text matches any temporary message
-            const tempMessageToReplace = prev.find(msg => 
-              msg.isSending && msg.text === data.message.text
-            );
-
-            if (tempMessageToReplace) {
-              console.log('🔄 Replacing temporary message with real one');
-              tempMessagesRef.current.delete(tempMessageToReplace._id);
-              return prev.map(msg => 
-                msg._id === tempMessageToReplace._id ? data.message : msg
-              );
-            }
-
-            // Check if message already exists
-            const messageExists = prev.some(msg => msg._id === data.message._id);
-            if (messageExists) {
-              console.log('⚠️ Message already exists, skipping');
-              return prev;
-            }
-            
-            console.log('✅ Adding new message from other user');
-            return [...prev, data.message];
-          });
-          
-          markAsRead(chatId);
-        }
-      };
-
-      const handleUserTyping = (data) => {
-        if (data.chatId === chatId && data.userId !== userData?._id) {
-          setTypingUsers(prev => [...prev.filter(id => id !== data.userId), data.userId]);
-        }
-      };
-
-      const handleUserStopTyping = (data) => {
-        if (data.chatId === chatId) {
-          setTypingUsers(prev => prev.filter(id => id !== data.userId));
-        }
-      };
-
-      socket.on("new_message", handleNewMessage);
-      socket.on("user_typing", handleUserTyping);
-      socket.on("user_stop_typing", handleUserStopTyping);
-
-      return () => {
-        socket.emit("leave_chat", chatId);
-        socket.off("new_message", handleNewMessage);
-        socket.off("user_typing", handleUserTyping);
-        socket.off("user_stop_typing", handleUserStopTyping);
-      };
+    if (messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [socket, chatId, userData]);
+  }, [messages]);
 
-  // Auto-scroll to bottom
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, typingUsers]);
-
-  // Typing indicators
-  const handleTypingStart = () => {
-    if (socket && chatId) {
-      socket.emit("typing_start", { chatId });
-    }
-  };
-
-  const handleTypingStop = () => {
-    if (socket && chatId) {
-      socket.emit("typing_stop", { chatId });
-    }
-  };
-
-  // Send message - FIXED VERSION
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !chatId || !userData) {
-      console.log('❌ Cannot send message - missing data:', { 
-        hasMessage: !!newMessage.trim(), 
-        hasChatId: !!chatId, 
-        hasUserData: !!userData 
+  // Send message (simple)
+  const handleSendMessage = () => {
+    if (!newMessage.trim() || !chatId) return;
+    
+    const tempMessage = {
+      _id: `temp_${Date.now()}`,
+      sender: userData,
+      text: newMessage.trim(),
+      createdAt: new Date().toISOString(),
+      isSending: true
+    };
+    
+    setMessages(prev => [...prev, tempMessage]);
+    setNewMessage("");
+    
+    // Send via socket if available
+    if (socket) {
+      socket.emit("send_message", {
+        chatId,
+        text: newMessage.trim(),
+        messageType: "text"
       });
-      return;
-    }
-
-    const messageText = newMessage.trim();
-    const tempId = `temp-${Date.now()}`;
-
-    try {
-      // Create temporary message (optimistic update)
-      const tempMessage = {
-        _id: tempId,
-        sender: { 
-          _id: userData._id, 
-          name: userData.name, 
-          username: userData.username, 
-          avatar: userData.avatar 
-        },
-        text: messageText,
-        createdAt: new Date(),
-        readBy: [],
-        isSending: true
-      };
-
-      console.log('📤 Sending message via socket, temp ID:', tempId);
-      console.log('👤 Sender ID in temp message:', userData._id);
-      
-      // Track this temporary message
-      tempMessagesRef.current.add(tempId);
-      
-      // Add to UI immediately
-      setMessages(prev => [...prev, tempMessage]);
-      setNewMessage("");
-      handleTypingStop();
-
-      // Send via socket
-      if (socket) {
-        socket.emit("send_message", {
-          chatId,
-          text: messageText,
-          messageType: "text"
-        });
-        console.log('✅ Message sent via socket');
-      }
-
-      // Safety cleanup
-      setTimeout(() => {
-        if (tempMessagesRef.current.has(tempId)) {
-          console.log('🕒 Removing temporary message after timeout');
-          setMessages(prev => prev.filter(msg => msg._id !== tempId));
-          tempMessagesRef.current.delete(tempId);
-        }
-      }, 10000);
-
-    } catch (error) {
-      console.error("❌ Error sending message:", error);
-      setMessages(prev => prev.filter(msg => msg._id !== tempId));
-      tempMessagesRef.current.delete(tempId);
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
-
-  // Get message status icon
-  const getMessageStatus = (message) => {
-    if (message.isSending) {
-      return <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin ml-1" />;
-    }
-    
-    if (message.readBy && message.readBy.length > 1) {
-      return <CheckCheck className="w-3 h-3 text-blue-500 ml-1" />;
-    }
-    
-    return <Check className="w-3 h-3 text-gray-400 ml-1" />;
-  };
-
-  // Message display with better debugging
-  const renderMessage = (message) => {
-    // EXTENSIVE DEBUGGING
-    console.log('🔍 === MESSAGE DEBUG START ===');
-    console.log('💬 Message Object:', JSON.stringify(message, null, 2));
-    console.log('👤 Message Sender:', message.sender);
-    console.log('🆔 Message Sender ID:', message.sender?._id, 'Type:', typeof message.sender?._id);
-    console.log('👤 Current User:', userData);
-    console.log('🆔 Current User ID:', userData?._id, 'Type:', typeof userData?._id);
-    
-    // Multiple comparison methods
-    const comparison1 = message.sender?._id === userData?._id;
-    const comparison2 = message.sender?._id?.toString() === userData?._id?.toString();
-    const comparison3 = String(message.sender?._id) === String(userData?._id);
-    
-    console.log('🔀 Comparisons:', {
-      direct: comparison1,
-      toString: comparison2, 
-      String: comparison3
-    });
-    
-    console.log('🔍 === MESSAGE DEBUG END ===');
-    
-    // Use the most reliable comparison
-    const isCurrentUser = String(message.sender?._id) === String(userData?._id);
-
+  // **Render Loading State**
+  if (loading) {
     return (
-      <div
-        key={message._id}
-        className={`flex ${isCurrentUser ? "justify-end" : "justify-start"}`}
-      >
-        <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${
-          isCurrentUser 
-            ? "bg-blue-500 text-white rounded-br-none" 
-            : "bg-white text-gray-800 rounded-bl-none border border-gray-200"
-        } ${message.isSending ? "opacity-80" : ""}`}>
-          <p className="text-sm">
-            {message.text}
-            <span className="text-xs ml-2 opacity-70">
-              ({isCurrentUser ? 'YOU' : 'THEM'})
-              <br/>
-              Sender: {message.sender?._id?.toString().substring(0, 8)}...
-              <br/>
-              Current: {userData?._id?.toString().substring(0, 8)}...
-            </span>
+      <div className="h-full flex flex-col items-center justify-center bg-white">
+        <div className="flex flex-col items-center">
+          <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4" />
+          <p className="text-gray-500">Loading chat...</p>
+          <p className="text-gray-400 text-sm mt-2">
+            Chat ID: {chatId || "none"} | User ID: {userId || "none"}
           </p>
-          <div className={`flex items-center justify-end mt-1 ${
-            isCurrentUser ? "text-blue-100" : "text-gray-400"
-          }`}>
-            <span className="text-xs">
-              {new Date(message.createdAt).toLocaleTimeString([], { 
-                hour: '2-digit', 
-                minute: '2-digit' 
-              })}
-            </span>
-            {isCurrentUser && getMessageStatus(message)}
-          </div>
         </div>
       </div>
     );
-  };
+  }
 
-  // Get the other participant info
-  const getOtherParticipant = () => {
-    if (chat?.participants) {
-      return chat.participants.find(participant => participant._id !== userData?._id);
-    }
-    return null;
-  };
+  // **Render Error/Empty State**
+  if (!chatId && !userId) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-white p-8">
+        <div className="text-center">
+          <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Send className="w-12 h-12 text-gray-400" />
+          </div>
+          <h3 className="text-xl font-semibold text-gray-700 mb-2">
+            No Chat Selected
+          </h3>
+          <p className="text-gray-500 mb-6">
+            Select a chat from the sidebar
+          </p>
+        </div>
+      </div>
+    );
+  }
 
-  const otherUser = getOtherParticipant();
-
+  // **Render Chat UI**
   return (
     <div className="h-full flex flex-col bg-white">
-      {/* Chat Header */}
-      <div className="p-4 border-b border-gray-200 bg-white flex items-center gap-3">
-        <button 
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-gray-200 flex items-center">
+        <button
           onClick={() => navigate('/chat')}
-          className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          className="p-2 hover:bg-gray-100 rounded-lg lg:hidden"
         >
           <ArrowLeft className="w-5 h-5 text-gray-500" />
         </button>
         
-        {otherUser ? (
-          <>
-            <div className="relative">
-              {otherUser.avatar ? (
-                <img 
-                  src={otherUser.avatar} 
-                  alt={otherUser.name}
-                  className="w-10 h-10 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                  {otherUser.name?.charAt(0) || "U"}
-                </div>
-              )}
-              <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${
-                otherUser.onlineStatus === 'online' ? 'bg-green-500' : 'bg-gray-400'
-              }`}></span>
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-800">{otherUser.name}</h3>
-              <p className="text-sm text-gray-500">@{otherUser.username}</p>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1">
-            <h3 className="font-semibold text-gray-800">
-              {loading ? "Starting chat..." : "Chat"}
-            </h3>
-          </div>
-        )}
-        
-        <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-          <MoreVertical className="w-5 h-5 text-gray-500" />
-        </button>
+        <div className="ml-3">
+          <h3 className="font-semibold text-gray-800">
+            {chat ? "Chat" : "Loading..."}
+          </h3>
+          <p className="text-sm text-gray-500">
+            {messages.length} messages
+          </p>
+        </div>
       </div>
 
-      {/* Messages Area */}
+      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
-        {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center p-8">
-            <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-4">
-              <Send className="w-8 h-8 text-gray-400" />
+        {messages.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-center p-8">
+            <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+              <Send className="w-10 h-10 text-gray-400" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-600 mb-2">No messages yet</h3>
-            <p className="text-gray-400 text-sm">Send a message to start the conversation</p>
+            <h3 className="text-lg font-semibold text-gray-600 mb-2">
+              No messages yet
+            </h3>
+            <p className="text-gray-400 text-sm mb-6">
+              Start the conversation
+            </p>
           </div>
         ) : (
-          <div className="space-y-4 max-w-4xl mx-auto">
-            {messages.map(renderMessage)}
-            
-            {/* Typing Indicator */}
-            {typingUsers.length > 0 && (
-              <div className="flex justify-start">
-                <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-none px-4 py-2">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                  </div>
-                </div>
+          <div className="space-y-2">
+            {messages.map((msg, index) => (
+              <div
+                key={msg._id || index}
+                className={`p-3 rounded-lg max-w-xs ${
+                  msg.sender?._id === userData?._id
+                    ? "bg-blue-500 text-white ml-auto"
+                    : "bg-gray-100 text-gray-800"
+                }`}
+              >
+                <p className="text-sm">{msg.text}</p>
+                <p className="text-xs opacity-70 mt-1">
+                  {msg.isSending ? "Sending..." : "Sent"}
+                </p>
               </div>
-            )}
-            
+            ))}
             <div ref={messagesEndRef} />
           </div>
         )}
       </div>
 
-      {/* Message Input */}
-      <div className="p-4 border-t border-gray-200 bg-white">
-        <div className="flex items-center gap-2">
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-            <Image className="w-5 h-5 text-gray-500" />
-          </button>
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-            <Paperclip className="w-5 h-5 text-gray-500" />
-          </button>
-          <div className="flex-1 relative">
-            <textarea
-              value={newMessage}
-              onChange={(e) => {
-                setNewMessage(e.target.value);
-                if (e.target.value.trim()) {
-                  handleTypingStart();
-                } else {
-                  handleTypingStop();
-                }
-              }}
-              onKeyPress={handleKeyPress}
-              onBlur={handleTypingStop}
-              placeholder="Type a message..."
-              rows="1"
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-4 pr-12 py-3 text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none max-h-32"
-            />
-          </div>
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-            <Smile className="w-5 h-5 text-gray-500" />
-          </button>
+      {/* Input */}
+      <div className="p-4 border-t border-gray-200">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+            placeholder="Type a message..."
+            className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={!chatId}
+          />
           <button
             onClick={handleSendMessage}
             disabled={!newMessage.trim() || !chatId}
-            className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300"
           >
             <Send className="w-5 h-5" />
           </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-// ChatWindow.jsx - Yeh temporary debug version
-const renderMessage = (message) => {
-  // EXTENSIVE DEBUGGING
-  console.log('🔍 === MESSAGE DEBUG START ===');
-  console.log('💬 Message Object:', JSON.stringify(message, null, 2));
-  console.log('👤 Message Sender:', message.sender);
-  console.log('🆔 Message Sender ID:', message.sender?._id, 'Type:', typeof message.sender?._id);
-  console.log('👤 Current User:', userData);
-  console.log('🆔 Current User ID:', userData?._id, 'Type:', typeof userData?._id);
-  
-  // Multiple comparison methods
-  const comparison1 = message.sender?._id === userData?._id;
-  const comparison2 = message.sender?._id?.toString() === userData?._id?.toString();
-  const comparison3 = String(message.sender?._id) === String(userData?._id);
-  
-  console.log('🔀 Comparisons:', {
-    direct: comparison1,
-    toString: comparison2, 
-    String: comparison3
-  });
-  
-  console.log('🔍 === MESSAGE DEBUG END ===');
-  
-  // Use the most reliable comparison
-  const isCurrentUser = String(message.sender?._id) === String(userData?._id);
-
-  return (
-    <div
-      key={message._id}
-      className={`flex ${isCurrentUser ? "justify-end" : "justify-start"}`}
-    >
-      <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${
-        isCurrentUser 
-          ? "bg-blue-500 text-white rounded-br-none" 
-          : "bg-white text-gray-800 rounded-bl-none border border-gray-200"
-      }`}>
-        <p className="text-sm">
-          {message.text}
-          <span className="text-xs ml-2 opacity-70">
-            ({isCurrentUser ? 'YOU' : 'THEM'})
-            <br/>
-            Sender: {message.sender?._id?.toString().substring(0, 8)}...
-            <br/>
-            Current: {userData?._id?.toString().substring(0, 8)}...
-          </span>
-        </p>
-        <div className={`flex items-center justify-end mt-1 ${
-          isCurrentUser ? "text-blue-100" : "text-gray-400"
-        }`}>
-          <span className="text-xs">
-            {new Date(message.createdAt).toLocaleTimeString([], { 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            })}
-          </span>
-          {isCurrentUser && getMessageStatus(message)}
         </div>
       </div>
     </div>
