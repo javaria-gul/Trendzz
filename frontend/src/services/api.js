@@ -1,14 +1,14 @@
-// src/services/api.js (UPDATED VERSION)
+// src/services/api.js (FIXED VERSION)
 import axios from "axios";
 
-const BASE_URL = "http://localhost:5000"; 
+const BASE_URL = "http://localhost:5000/api"; // ✅ Correct
 
 const API = axios.create({
-  baseURL: `${BASE_URL}/api`,
+  baseURL: `${BASE_URL}`,  // ✅ Ye banega: "http://localhost:5000/api"
   timeout: 10000,
 });
 
-// ✅ FIXED: Request interceptor - better handling for multipart/form-data
+// ✅ FIXED: Request interceptor
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem("trendzz_token");
   
@@ -35,8 +35,7 @@ API.interceptors.request.use((config) => {
   return Promise.reject(error);
 });
 
-// ✅ FIXED: Response interceptor
-// api.js - Line 40-45 ko update karo
+// ✅ FIXED: Response interceptor - Return consistent format
 API.interceptors.response.use(
   (response) => {
     console.log('✅ API Response:', {
@@ -45,9 +44,13 @@ API.interceptors.response.use(
       data: response.data
     });
     
-    // ✅ IMPORTANT: Return the FULL response, not just response.data
-    // Kyonki postsAPI ko access chahiye headers and other info
-    return response.data; // ← CHANGE THIS LINE
+    // ✅ RETURN CONSISTENT FORMAT
+    return {
+      success: response.data?.success !== false,
+      data: response.data,
+      status: response.status,
+      headers: response.headers
+    };
   },
   (error) => {
     console.error('❌ API Error:', {
@@ -66,45 +69,45 @@ API.interceptors.response.use(
     return Promise.reject({
       success: false,
       message: error.response?.data?.message || error.message || 'Network error',
+      data: error.response?.data,
       error: error
     });
   }
 );
 
-// ✅ POSTS API with better debugging
+// ✅ POSTS API - FIXED
 export const postsAPI = {
-  // Create post with media
-// api.js - postsAPI.createPost function
-createPost: async (formData, onUploadProgress) => {
-  console.log('📤 Creating post with formData:', {
-    hasFiles: formData.getAll('files').length,
-    content: formData.get('content'),
-    location: formData.get('location')
-  });
-  
-  try {
-    const token = localStorage.getItem("trendzz_token");
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-    
-    // ✅ Use axios directly with proper config
-    const response = await axios.post(`${BASE_URL}/api/posts`, formData, {
-      headers: { 
-        'Content-Type': 'multipart/form-data',
-        'Authorization': `Bearer ${token}`
-      },
-      onUploadProgress
+  // Create post with media - FIXED DOUBLE /API
+  createPost: async (formData, onUploadProgress) => {
+    console.log('📤 Creating post with formData:', {
+      hasFiles: formData.getAll('files').length,
+      content: formData.get('content'),
+      location: formData.get('location')
     });
     
-    console.log('✅ Post created response:', response.data);
-    return response.data; // ← Return just the data
-    
-  } catch (error) {
-    console.error('❌ Create post error:', error);
-    throw error.response?.data || error;
-  }
-},
+    try {
+      const token = localStorage.getItem("trendzz_token");
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+      
+      // ✅ FIXED: Remove extra /api (was: ${BASE_URL}/api/posts)
+      const response = await axios.post(`${BASE_URL}/posts`, formData, {
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${token}`
+        },
+        onUploadProgress
+      });
+      
+      console.log('✅ Post created response:', response.data);
+      return response.data;
+      
+    } catch (error) {
+      console.error('❌ Create post error:', error);
+      throw error.response?.data || error;
+    }
+  },
   
   // Get all posts
   getPosts: (page = 1, limit = 10) => 

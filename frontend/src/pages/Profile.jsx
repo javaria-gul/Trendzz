@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AuthContext } from '../context/AuthContext';
 import { Edit3, Camera, X, User, GraduationCap, Heart, CheckCircle, XCircle, Image } from 'lucide-react';
 import API from '../services/api';
+import { updateProfile } from '../services/user'; // ✅ IMPORT THIS
 
 const Profile = () => {
   const { userData, updateUserData } = useContext(AuthContext);
@@ -48,22 +49,20 @@ const Profile = () => {
     }
   }, [userData]);
 
-  // Test connection on component mount
+  // Test connection on component mount - ✅ FIXED: Removed /api from endpoints
   useEffect(() => {
-    // Test the connection
     const testAuth = async () => {
       const testEndpoints = [
-        '/api/auth/test-connection',
-        '/auth/test-connection', 
-        '/api/test-connection',
-        '/test-connection'
+        '/auth/test-connection',      // ✅ WITHOUT /api
+        '/auth/test',                // ✅ Backup
+        '/test-connection'           // ✅ Direct
       ];
 
       for (const endpoint of testEndpoints) {
         try {
           console.log(`🔄 Testing endpoint: ${endpoint}`);
           const response = await API.get(endpoint);
-          console.log(`✅ Endpoint working: ${endpoint}`, response.data);
+          console.log(`✅ Endpoint working: ${endpoint}`, response);
           break;
         } catch (error) {
           console.log(`❌ Endpoint failed: ${endpoint}`, error.response?.status);
@@ -164,7 +163,7 @@ const Profile = () => {
     }
   };
 
-  // FIXED: Updated handleSave function with proper error handling and correct API endpoint
+  // ✅ FIXED: handleSave function with proper error handling
   const handleSave = async () => {
     if (isLoading) return;
     
@@ -193,47 +192,26 @@ const Profile = () => {
         formData.append('coverImage', editForm.coverFile);
       }
 
-      console.log('📦 Sending profile update with form data');
+      console.log('📦 Sending profile update...');
 
-      // Try multiple endpoint variations to find the correct one
-      let response;
-      let lastError;
+      // ✅ USE THE updateProfile FUNCTION FROM user.js
+      const response = await updateProfile(formData);
       
-      const endpoints = [
-        '/api/auth/profile-with-images',  // Most common
-        '/auth/profile-with-images',      // Without /api
-        '/api/profile-with-images',       // Without /auth
-        '/profile-with-images'           // Direct
-      ];
+      console.log('✅ API Response:', response);
 
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`🔄 Trying endpoint: ${endpoint}`);
-          response = await API.put(endpoint, formData, {
-            headers: {
-              'Content-Type': 'multipart/form-data'
-            }
-          });
-          console.log(`✅ Success with endpoint: ${endpoint}`);
-          break; // Exit loop if successful
-        } catch (error) {
-          lastError = error;
-          console.log(`❌ Failed with endpoint: ${endpoint}`, error.response?.status);
-          continue; // Try next endpoint
-        }
-      }
-
-      // If all endpoints failed
-      if (!response) {
-        throw new Error(`All endpoints failed. Last error: ${lastError?.message}`);
-      }
-      
-      console.log('✅ API Response received:', response.data);
-
-      if (response.data.success) {
-        console.log('🔄 Updated user data:', response.data.user);
-        updateUserData(response.data.user);
-        localStorage.setItem("trendzz_user", JSON.stringify(response.data.user));
+      // ✅ FIX: Check response properly
+      if (response && (response.success !== false)) {
+        // Extract user data from different possible response formats
+        const updatedUser = response.data?.user || 
+                           response.user || 
+                           response.data || 
+                           response;
+        
+        console.log('🔄 Updated user data:', updatedUser);
+        
+        // Update context and localStorage
+        updateUserData(updatedUser);
+        localStorage.setItem("trendzz_user", JSON.stringify(updatedUser));
         
         // Clear temporary files
         setEditForm(prev => ({ ...prev, avatarFile: null, coverFile: null }));
@@ -243,19 +221,22 @@ const Profile = () => {
         alert('✅ Profile updated successfully!');
         setIsEditing(false);
       } else {
-        throw new Error(response.data.message);
+        // If success is false
+        const errorMsg = response?.message || response?.data?.message || 'Profile update failed';
+        throw new Error(errorMsg);
       }
 
     } catch (error) {
       console.error('❌ Profile update error:', error);
+      
       let errorMessage = 'Unknown error occurred';
       
-      if (error.response) {
-        errorMessage = error.response.data?.message || `Server error: ${error.response.status}`;
-        console.error('❌ Server response:', error.response.data);
-      } else if (error.request) {
-        errorMessage = 'Network error - No response from server. Please check your connection.';
-      } else {
+      // Extract error message from different error formats
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.data?.message) {
+        errorMessage = error.data.message;
+      } else if (error.message) {
         errorMessage = error.message;
       }
       

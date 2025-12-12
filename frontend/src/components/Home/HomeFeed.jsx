@@ -13,18 +13,18 @@ const HomeFeed = () => {
   const [hasMore, setHasMore] = useState(true);
   const { userData } = useContext(AuthContext);
 
-  // ✅ FIXED: fetchPosts function
+  // ✅ FIXED: fetchPosts function for new API response format
   const fetchPosts = async (pageNum = 1) => {
     try {
       setLoading(true);
       console.log(`🔄 Fetching posts page ${pageNum}...`);
       
-      // ✅ CHANGE 1:  instead of getPosts
       const response = await postsAPI.getPosts(pageNum, 100);
       
       console.log('📥 API Response:', response);
       
-      // ✅ CHANGE 2: Check response.data?.posts first
+      // ✅ NEW FORMAT: response.data.posts access
+      // ✅ OLD FORMAT FALLBACK: response.posts
       const postsData = response.data?.posts || response.posts || [];
       
       if (pageNum === 1) {
@@ -48,7 +48,7 @@ const HomeFeed = () => {
     fetchPosts(1);
   }, []);
 
-  // ✅ FIXED: handleLike function
+  // ✅ FIXED: handleLike function for new API format
   const handleLike = async (postId) => {
     try {
       console.log('❤️ Liking post:', postId);
@@ -56,23 +56,35 @@ const HomeFeed = () => {
       const response = await postsAPI.likePost(postId);
       console.log('Like response:', response);
       
-      if (response.success) {
+      // ✅ NEW FORMAT: response.data contains the data
+      // ✅ OLD FORMAT: response directly contains data
+      const responseData = response.data || response;
+      
+      if (response.success || responseData.success) {
+        const successData = responseData.success ? responseData : response;
+        
         setPosts(prevPosts => 
           prevPosts.map(post => {
             if (post._id === postId) {
               return {
                 ...post,
-                // ✅ FIXED: Update both isLiked and likes array
-                isLiked: response.isLiked,
-                likes: response.likesList || post.likes,
-                likesCount: response.likes || post.likesCount
+                // ✅ Handle both new and old response formats
+                likes: successData.data?.likes || 
+                      successData.likes || 
+                      successData.likedBy || 
+                      post.likes,
+                likesCount: successData.data?.likesCount || 
+                          successData.likesCount || 
+                          successData.likes || 
+                          (successData.likedBy?.length || 0) || 
+                          post.likesCount
               };
             }
             return post;
           })
         );
       } else {
-        console.error('Like failed:', response.message);
+        console.error('Like failed:', response.message || response.data?.message);
       }
     } catch (error) {
       console.error('Error liking post:', error);
@@ -80,7 +92,7 @@ const HomeFeed = () => {
     }
   };
 
-  // ✅ FIXED: handleAddComment function
+  // ✅ FIXED: handleAddComment function for new API format
   const handleAddComment = async (postId, text) => {
     try {
       console.log('💬 Adding comment to post:', postId);
@@ -88,26 +100,41 @@ const HomeFeed = () => {
       const response = await postsAPI.addComment(postId, text);
       console.log('Comment response:', response);
       
-      if (response.success) {
+      // ✅ NEW FORMAT: response.data contains the data
+      const responseData = response.data || response;
+      
+      if (response.success || responseData.success) {
+        const successData = responseData.success ? responseData : response;
+        
         setPosts(prevPosts => 
           prevPosts.map(post => {
             if (post._id === postId) {
               return {
                 ...post,
-                // ✅ FIXED: Add comment to array safely
-                comments: [...(post.comments || []), response.comment],
-                commentsCount: response.totalComments || (post.commentsCount || 0) + 1
+                // ✅ Handle both new and old response formats
+                comments: [...(post.comments || []), 
+                          successData.data?.comment || 
+                          successData.comment || 
+                          successData.data],
+                commentsCount: successData.data?.totalComments || 
+                              successData.totalComments || 
+                              successData.commentsCount || 
+                              ((post.commentsCount || 0) + 1)
               };
             }
             return post;
           })
         );
         
-        // ✅ FIXED: Return comment for PostCard optimistic update
-        return { comment: response.comment };
+        // ✅ Return comment for PostCard optimistic update
+        return { 
+          comment: successData.data?.comment || 
+                  successData.comment || 
+                  successData.data 
+        };
       } else {
-        console.error('Comment failed:', response.message);
-        throw new Error(response.message);
+        console.error('Comment failed:', response.message || responseData.message);
+        throw new Error(response.message || responseData.message);
       }
     } catch (error) {
       console.error('Error adding comment:', error);
@@ -199,7 +226,6 @@ const HomeFeed = () => {
             <PostCard
               key={post._id}
               post={post}
-              // ✅ CHANGE 3: ADD currentUserId prop
               currentUserId={userData?._id}
               onLikeToggle={handleLike}
               onAddComment={handleAddComment}
