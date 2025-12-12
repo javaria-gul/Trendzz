@@ -7,65 +7,70 @@ const setupSocket = (server) => {
   const io = new Server(server, {
     cors: {
       origin: process.env.FRONTEND_URL || "http://localhost:3000",
-      methods: ["GET", "POST"]
+      methods: ["GET", "POST"],
+      credentials: true
     }
   });
 
   const onlineUsers = new Map();
   const userSockets = new Map();
 
-  // Authentication middleware for Socket.io
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth.token;
+      
       if (!token) {
-        return next(new Error("Authentication error"));
+        console.log("❌ Socket connection: No token provided");
+        return next(new Error("Authentication error: No token"));
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user = await User.findById(decoded.id).select("id name username avatar privacySettings onlineStatus");
       
       if (!user) {
+        console.log("❌ Socket connection: User not found");
         return next(new Error("User not found"));
       }
 
+      await User.findByIdAndUpdate(user.id, { 
+        onlineStatus: 'online',
+        lastSeen: new Date()
+      });
+
       socket.userId = user.id;
       socket.user = user;
+      
+      console.log(`✅ Socket authenticated: ${user.name} (${user.id})`);
       next();
     } catch (error) {
-      console.error("Socket auth error:", error);
+      console.error("❌ Socket auth error:", error.message);
       next(new Error("Authentication error"));
     }
   });
 
   io.on("connection", (socket) => {
-    console.log("User connected:", socket.userId);
+    console.log(`🔌 User connected: ${socket.userId} (Socket: ${socket.id})`);
 
-    // Add user to online users
     onlineUsers.set(socket.id, socket.userId);
     userSockets.set(socket.userId, socket.id);
 
-    // Broadcast online status
     socket.broadcast.emit("user_online", {
       userId: socket.userId,
       user: socket.user
     });
 
-    // Join user to their personal room
     socket.join(socket.userId);
 
-    // Handle joining chat room
     socket.on("join_chat", (chatId) => {
       socket.join(chatId);
-      console.log(`User ${socket.userId} joined chat ${chatId}`);
+      console.log(`👥 User ${socket.userId} joined chat ${chatId}`);
     });
 
-    // Handle leaving chat room
     socket.on("leave_chat", (chatId) => {
       socket.leave(chatId);
+      console.log(`👋 User ${socket.userId} left chat ${chatId}`);
     });
 
-    // Handle typing events
     socket.on("typing_start", async (data) => {
       const { chatId } = data;
       
@@ -81,8 +86,10 @@ const setupSocket = (server) => {
           userId: socket.userId,
           user: socket.user
         });
+
+        console.log(`⌨️ User ${socket.userId} started typing in chat ${chatId}`);
       } catch (error) {
-        console.error("Typing start error:", error);
+        console.error("❌ Typing start error:", error);
       }
     });
 
@@ -100,18 +107,23 @@ const setupSocket = (server) => {
           chatId,
           userId: socket.userId
         });
+
+        console.log(`💤 User ${socket.userId} stopped typing in chat ${chatId}`);
       } catch (error) {
-        console.error("Typing stop error:", error);
+        console.error("❌ Typing stop error:", error);
       }
     });
 
-    // Handle new message
+    // ✅ FIXED: Handle new message with proper population
     socket.on("send_message", async (data) => {
       try {
         const { chatId, text, image, file, messageType, repliedTo } = data;
 
+        console.log(`📨 Socket message received - Chat: ${chatId}, Sender: ${socket.userId}, Text: ${text}`);
+
         const chat = await Chat.findById(chatId);
         if (!chat || !chat.participants.includes(socket.userId)) {
+          console.log(`❌ Chat not found or user not participant: ${chatId}`);
           return socket.emit("error", { message: "Chat not found" });
         }
 
@@ -128,8 +140,15 @@ const setupSocket = (server) => {
 
         await message.save();
 
-        // Update chat
-        chat.lastMessage = message._id;
+        // ✅ CRITICAL FIX: Properly populate message using findById
+        const populatedMessage = await Message.findById(message._id)
+          .populate("sender", "_id name username avatar")
+          .populate("repliedTo");
+
+        console.log(`✅ Message populated - Sender: ${populatedMessage.sender?.name}, ID: ${populatedMessage.sender?._id}`);
+
+        // Update chat with populated message
+        chat.lastMessage = populatedMessage._id;
         
         // Update unread counts
         chat.participants.forEach(participantId => {
@@ -141,45 +160,45 @@ const setupSocket = (server) => {
         
         await chat.save();
 
-        // Populate message
-        await message.populate("sender", "name username avatar");
-        await message.populate("repliedTo");
-
-        // Emit to all participants in the chat
+        // ✅ FIXED: Emit to chat room with PROPERLY POPULATED data
         io.to(chatId).emit("new_message", {
-          message,
-          chatId
+          chatId,
+          message: populatedMessage  // ✅ populatedMessage bhejo
         });
 
-        // Emit chat update to all participants
+        console.log(`📢 Message broadcasted to chat ${chatId}`);
+
+        // Emit chat update
         chat.participants.forEach(participantId => {
           io.to(participantId.toString()).emit("chat_updated", {
             chatId,
-            lastMessage: message,
+            lastMessage: populatedMessage,  // ✅ yahan bhi populatedMessage
             unreadCount: chat.unreadCounts.get(participantId.toString()) || 0
           });
         });
 
       } catch (error) {
-        console.error("Send message error:", error);
+        console.error("❌ Send message error:", error);
         socket.emit("error", { message: "Failed to send message" });
       }
     });
 
-    // Handle message reactions
     socket.on("react_to_message", async (data) => {
       try {
         const { messageId, emoji } = data;
         
+        console.log(`❤️ Reaction received - Message: ${messageId}, Emoji: ${emoji}`);
+        
         const message = await Message.findById(messageId);
-        if (!message) return;
+        if (!message) {
+          console.log(`❌ Message not found: ${messageId}`);
+          return;
+        }
 
-        // Remove existing reaction from this user
         message.reactions = message.reactions.filter(
           reaction => reaction.user.toString() !== socket.userId
         );
 
-        // Add new reaction
         message.reactions.push({
           user: socket.userId,
           emoji
@@ -188,7 +207,8 @@ const setupSocket = (server) => {
         await message.save();
         await message.populate("reactions.user", "name username");
 
-        // Broadcast reaction to chat
+        console.log(`✅ Reaction saved for message ${messageId}`);
+
         const chat = await Chat.findById(message.chat);
         socket.to(chat._id.toString()).emit("message_reacted", {
           messageId,
@@ -196,21 +216,26 @@ const setupSocket = (server) => {
         });
 
       } catch (error) {
-        console.error("Reaction error:", error);
+        console.error("❌ Reaction error:", error);
       }
     });
 
-    // Handle disconnect
     socket.on("disconnect", async () => {
-      console.log("User disconnected:", socket.userId);
+      console.log(`🔌 User disconnected: ${socket.userId} (Socket: ${socket.id})`);
+
+      await User.findByIdAndUpdate(socket.userId, { 
+        onlineStatus: 'offline',
+        lastSeen: new Date()
+      });
 
       onlineUsers.delete(socket.id);
       userSockets.delete(socket.userId);
 
-      // Broadcast offline status
       socket.broadcast.emit("user_offline", {
         userId: socket.userId
       });
+
+      console.log(`📢 User ${socket.userId} status updated to offline`);
     });
   });
 
