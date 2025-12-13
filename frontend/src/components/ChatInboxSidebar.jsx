@@ -1,3 +1,4 @@
+// frontend/src/components/ChatInboxSidebar.jsx
 import React, { useState, useEffect } from "react";
 import { Search, MessageSquare, Users, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";

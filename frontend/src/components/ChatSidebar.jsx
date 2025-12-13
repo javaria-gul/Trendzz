@@ -1,3 +1,4 @@
+// frontend/src/components/ChatSidebar.jsx
 import React, { useState, useEffect, useContext } from "react";
 import { Search, MessageSquare, Users, Plus } from "lucide-react";
 import { getChats, startChat } from "../services/chat";

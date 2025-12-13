@@ -1,3 +1,4 @@
+// frontend/src/components/ChatEmptyState.jsx
 import React from "react";
 import { MessageCircle, Users } from "lucide-react";
 
