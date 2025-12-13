@@ -1,3 +1,4 @@
+// src/components/ChatWindow.jsx
 import React, { useState, useRef, useEffect, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { 
@@ -406,13 +407,26 @@ const ChatWindow = () => {
           </div>
         </button>
 
-        {/* Right side buttons */}
+        {/* Right side buttons - UPDATED WITH RED CROSS */}
         <div className="flex items-center gap-2">
+          {/* Red Cross Button - Close chat */}
+          <button
+            onClick={() => {
+              // Navigate to chat page without any chat selected
+              navigate('/chat');
+            }}
+            className="p-1.5 bg-white border border-gray-300 hover:bg-gray-50 rounded-full transition-colors duration-200 shadow-sm"
+            title="Close chat"
+          >
+            <X className="w-5 h-5 text-red-500" />
+          </button>
+          
           {/* Three dots menu */}
           <div className="relative">
             <button
               onClick={() => setShowMenu(!showMenu)}
-              className="p-2 hover:bg-gray-100 rounded-full"
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors duration-200"
+              title="More options"
             >
               <MoreVertical className="w-5 h-5 text-gray-500" />
             </button>
@@ -421,7 +435,7 @@ const ChatWindow = () => {
               <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
                 <button
                   onClick={handleDeleteChat}
-                  className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 flex items-center"
+                  className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 flex items-center transition-colors duration-200"
                 >
                   <X className="w-4 h-4 mr-2" />
                   Delete Chat

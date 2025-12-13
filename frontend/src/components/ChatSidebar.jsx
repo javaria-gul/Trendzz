@@ -1,5 +1,6 @@
+// src/components/ChatSidebar.jsx
 import React, { useState, useEffect, useContext } from "react";
-import { Search, MessageSquare, Users, Plus } from "lucide-react";
+import { Search, MessageSquare, Users, ArrowLeft } from "lucide-react";
 import { getChats, startChat } from "../services/chat";
 import { searchUsers } from "../services/user";
 import { SocketContext } from "../context/SocketContext";
@@ -272,12 +273,13 @@ const ChatSidebar = () => {
               </span>
             )}
           </h2>
+          {/* CHANGED: Plus button replaced with Left Arrow button */}
           <button 
-            onClick={() => navigate('/chat')}
-            className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center hover:bg-blue-200 transition-colors"
-            title="New Chat"
+            onClick={() => navigate('/')}
+            className="w-8 h-8 bg-blue-500 hover:bg-blue-600 rounded-full flex items-center justify-center transition-colors duration-200 shadow-sm"
+            title="Go to Home"
           >
-            <Plus className="w-4 h-4 text-blue-600" />
+            <ArrowLeft className="w-4 h-4 text-white" />
           </button>
         </div>
         
