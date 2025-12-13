@@ -1,5 +1,3 @@
-// frontend/src/components/ChatWindow.jsx
-
 import React, { useState, useRef, useEffect, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { 
@@ -10,14 +8,13 @@ import {
   Check, 
   CheckCheck,
   Loader2,
-  Home
+  ArrowLeft
 } from "lucide-react";
 import { 
   getMessages, 
   markAsRead, 
   startChat, 
-  getChats, 
-  deleteChat 
+  getChats
 } from "../services/chat";
 import { SocketContext } from "../context/SocketContext";
 import { AuthContext } from "../context/AuthContext";
@@ -33,7 +30,6 @@ const ChatWindow = () => {
   const [sending, setSending] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [otherUser, setOtherUser] = useState(null);
-  const [isOnline, setIsOnline] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [typingUsers, setTypingUsers] = useState([]);
   const messagesEndRef = useRef(null);
@@ -76,9 +72,6 @@ const ChatWindow = () => {
               // Find other user
               const other = foundChat.participants?.find(p => p._id !== userData?._id);
               setOtherUser(other);
-              
-              // Simulate online status
-              setIsOnline(Math.random() > 0.5);
             }
           }
           
@@ -95,7 +88,6 @@ const ChatWindow = () => {
         
       } catch (error) {
         console.error("Chat load error:", error);
-        alert("Failed to load chat");
       } finally {
         setLoading(false);
       }
@@ -112,46 +104,26 @@ const ChatWindow = () => {
   useEffect(() => {
     if (!socket || !chatId) return;
 
-    const handleNewMessage = (message) => {
-      if (message.chatId === chatId) {
+    const handleNewMessage = (data) => {
+      if (data.chatId === chatId) {
         setMessages(prev => {
-          // Update sending message
-          const updated = prev.map(msg => 
-            msg.isSending && msg.text === message.text 
-              ? { ...message, isSending: false }
-              : msg
-          );
+          // Check if message already exists
+          const messageExists = prev.some(msg => msg._id === data.message._id);
+          if (messageExists) return prev;
           
-          // Add new message if not present
-          if (!updated.some(msg => msg._id === message._id)) {
-            return [...updated, message];
-          }
-          return updated;
+          return [...prev, data.message];
         });
       }
     };
 
     const handleTyping = (data) => {
       if (data.chatId === chatId && data.userId !== userData?._id) {
-        setTypingUsers(prev => {
-          if (!prev.includes(data.userId)) {
-            return [...prev, data.userId];
-          }
-          return prev;
-        });
+        setTypingUsers(prev => [...prev, data.userId]);
         
         // Clear after 3 seconds
         setTimeout(() => {
           setTypingUsers(prev => prev.filter(id => id !== data.userId));
         }, 3000);
-      }
-    };
-
-    const handleReadReceipt = (data) => {
-      if (data.chatId === chatId) {
-        setMessages(prev => prev.map(msg => 
-          msg.sender?._id !== userData?._id ? { ...msg, read: true } : msg
-        ));
       }
     };
 
@@ -161,16 +133,51 @@ const ChatWindow = () => {
       }
     };
 
-    socket.on("receive_message", handleNewMessage);
+    // Message status events
+    const handleMessageSent = (data) => {
+      if (data.chatId === chatId && data.tempId) {
+        setMessages(prev => prev.map(msg => 
+          msg._id === data.tempId ? { ...msg, _id: data.messageId, status: 'sent', isSending: false } : msg
+        ));
+      }
+    };
+
+    const handleMessageDelivered = (data) => {
+      if (data.chatId === chatId && data.messageId) {
+        setMessages(prev => prev.map(msg => 
+          msg._id === data.messageId ? { ...msg, status: 'delivered' } : msg
+        ));
+      }
+    };
+
+    const handleMessageRead = (data) => {
+      if (data.chatId === chatId && data.messageId) {
+        setMessages(prev => prev.map(msg => 
+          msg._id === data.messageId ? { ...msg, status: 'read' } : msg
+        ));
+      }
+    };
+
+    socket.on("new_message", handleNewMessage);
     socket.on("user_typing", handleTyping);
-    socket.on("stop_typing", handleStopTyping);
-    socket.on("message_read", handleReadReceipt);
+    socket.on("user_stop_typing", handleStopTyping);
+    socket.on("message_sent", handleMessageSent);
+    socket.on("message_delivered", handleMessageDelivered);
+    socket.on("message_read", handleMessageRead);
+
+    // Join chat room
+    socket.emit("join_chat", { chatId });
 
     return () => {
-      socket.off("receive_message", handleNewMessage);
+      socket.off("new_message", handleNewMessage);
       socket.off("user_typing", handleTyping);
-      socket.off("stop_typing", handleStopTyping);
-      socket.off("message_read", handleReadReceipt);
+      socket.off("user_stop_typing", handleStopTyping);
+      socket.off("message_sent", handleMessageSent);
+      socket.off("message_delivered", handleMessageDelivered);
+      socket.off("message_read", handleMessageRead);
+      
+      // Leave chat room
+      socket.emit("leave_chat", { chatId });
     };
   }, [socket, chatId, userData]);
 
@@ -202,7 +209,6 @@ const ChatWindow = () => {
       text: newMessage.trim(),
       createdAt: new Date().toISOString(),
       isSending: true,
-      read: false,
       status: 'sending'
     };
     
@@ -220,13 +226,13 @@ const ChatWindow = () => {
         });
       }
       
-      socket?.emit("stop_typing", { chatId, userId: userData?._id });
+      socket?.emit("typing_stop", { chatId });
       
     } catch (error) {
       console.error("Send message error:", error);
       setMessages(prev => prev.map(msg => 
         msg._id === tempId 
-          ? { ...msg, isSending: false, error: true, status: 'error' }
+          ? { ...msg, isSending: false, status: 'error' }
           : msg
       ));
     } finally {
@@ -237,10 +243,7 @@ const ChatWindow = () => {
   // Handle typing indicator
   const handleTyping = () => {
     if (socket && chatId) {
-      socket.emit("typing", {
-        chatId,
-        userId: userData?._id
-      });
+      socket.emit("typing_start", { chatId });
     }
   };
 
@@ -250,23 +253,15 @@ const ChatWindow = () => {
     inputRef.current?.focus();
   };
 
-  // Handle delete chat - FIXED VERSION
+  // Handle delete chat
   const handleDeleteChat = async () => {
     if (!chatId) return;
     
-    if (window.confirm("Are you sure you want to delete this chat? All messages will be lost.")) {
+    if (window.confirm("Are you sure you want to delete this chat?")) {
       try {
-        const response = await deleteChat(chatId);
-        
-        if (response.data?.success) {
-          // ✅ DIRECT HOME FEED PE JANA HAI - BHAI KA REQUEST
-          navigate('/', { replace: true });
-        } else {
-          alert("Chat delete nahi hui. Phir se try karein.");
-        }
+        navigate('/');
       } catch (error) {
         console.error("Delete chat error:", error);
-        alert(`Error: ${error.response?.data?.message || "Chat delete nahi hui"}`);
       }
     }
     setShowMenu(false);
@@ -281,28 +276,53 @@ const ChatWindow = () => {
 
   // Format time
   const formatTime = (dateString) => {
+    if (!dateString) return "";
     const date = new Date(dateString);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Format last seen
+  const formatLastSeen = (timestamp) => {
+    if (!timestamp) return "Recently";
+    
+    const now = new Date();
+    const lastSeen = new Date(timestamp);
+    const diff = now - lastSeen;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    return `${days}d ago`;
   };
 
   // Get message status icon
   const getMessageStatus = (message) => {
     if (message.isSending || message.status === 'sending') {
-      return <Loader2 className="w-3 h-3 animate-spin" />;
+      return <Loader2 className="w-3 h-3 animate-spin text-gray-400" />;
     }
-    if (message.read) {
-      return <CheckCheck className="w-3 h-3 text-blue-300" />;
+    
+    if (message.status === 'read') {
+      return <CheckCheck className="w-3 h-3 text-blue-500" />;
     }
-    if (message.delivered || message.status === 'delivered') {
-      return <CheckCheck className="w-3 h-3 opacity-60" />;
+    
+    if (message.status === 'delivered') {
+      return <CheckCheck className="w-3 h-3 text-gray-400" />;
     }
-    return <Check className="w-3 h-3 opacity-60" />;
+    
+    if (message.status === 'sent') {
+      return <Check className="w-3 h-3 text-gray-400" />;
+    }
+    
+    return <Check className="w-3 h-3 text-gray-300" />;
   };
 
   // Loading state
   if (loading) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-gray-50">
+      <div className="h-full w-full flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center">
           <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4" />
           <p className="text-gray-600">Loading conversation...</p>
@@ -314,16 +334,16 @@ const ChatWindow = () => {
   // Empty state
   if (!chatId && !userId) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-gray-50">
+      <div className="h-full w-full flex items-center justify-center bg-gray-50">
         <div className="text-center p-8">
           <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <Send className="w-12 h-12 text-blue-400" />
           </div>
           <h3 className="text-xl font-semibold text-gray-800 mb-2">
-            Welcome to Chat
+            Your Messages
           </h3>
           <p className="text-gray-500">
-            Select a conversation or start a new one
+            Send private messages to start conversations with other users on the platform.
           </p>
         </div>
       </div>
@@ -331,63 +351,63 @@ const ChatWindow = () => {
   }
 
   return (
-    // ✅ EQUAL SPACING FOR ALL SIDES - MAIN CONTAINER
-    <div className="h-screen w-full flex flex-col bg-white">
-      {/* Header - TOP-RIGHT CROSS BUTTON ADDED HERE */}
-      <div className="flex-shrink-0 px-4 sm:px-6 py-3 border-b border-gray-200 bg-white flex items-center justify-between">
-        <div className="flex items-center">
-          {/* Left side: User profile */}
-          <div 
-            className="flex items-center cursor-pointer hover:opacity-80 transition-opacity"
-            onClick={handleProfileClick}
-          >
-            <div className="relative">
-              {otherUser?.profilePicture ? (
-                <img 
-                  src={otherUser.profilePicture} 
-                  alt={otherUser.name}
-                  className="w-10 h-10 rounded-full object-cover border-2 border-white"
-                />
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-semibold">
-                  {otherUser?.name?.charAt(0) || 'U'}
-                </div>
-              )}
-              {/* Online status indicator */}
-              <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${
-                isOnline ? 'bg-green-500' : 'bg-gray-400'
-              }`} />
-            </div>
-            
-            <div className="ml-3">
-              <h3 className="font-semibold text-gray-800">
-                {otherUser?.name || 'User'}
-              </h3>
-              <div className="flex items-center">
-                <p className="text-xs text-gray-500">
-                  {isOnline ? 'Online' : 'Offline'}
-                </p>
-                {typingUsers.length > 0 && (
-                  <span className="ml-2 text-xs text-blue-500 italic">
-                    typing...
-                  </span>
-                )}
+    <div className="h-full w-full flex flex-col bg-white">
+      {/* Header */}
+      <div className="flex-shrink-0 px-4 sm:px-6 py-3 border-b border-gray-200 bg-white flex items-center">
+        {/* Back button for mobile */}
+        <button
+          onClick={() => navigate('/chat')}
+          className="md:hidden mr-3 p-2 hover:bg-gray-100 rounded-full"
+        >
+          <ArrowLeft className="w-5 h-5 text-gray-600" />
+        </button>
+        
+        {/* User info */}
+        <button 
+          onClick={handleProfileClick}
+          className="flex items-center cursor-pointer hover:opacity-80 transition-opacity group flex-1"
+        >
+          <div className="relative">
+            {/* User Profile Picture */}
+            {otherUser?.avatar ? (
+              <img 
+                src={otherUser.avatar} 
+                alt={otherUser.name}
+                className="w-10 h-10 rounded-full object-cover border-2 border-white"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg">
+                {otherUser?.name?.charAt(0)?.toUpperCase() || 'U'}
               </div>
+            )}
+            
+            {/* Online Status Indicator */}
+            {otherUser?.onlineStatus === 'online' && (
+              <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+            )}
+          </div>
+          
+          {/* User Info */}
+          <div className="ml-3 text-left">
+            <h3 className="font-semibold text-gray-800 text-sm sm:text-base">
+              {otherUser?.name || 'Unknown User'}
+            </h3>
+            <div className="flex items-center">
+              <p className="text-xs text-gray-500">
+                {otherUser?.onlineStatus === 'online' ? 'Online' : 
+                 otherUser?.lastSeen ? `Last seen ${formatLastSeen(otherUser.lastSeen)}` : 'Offline'}
+              </p>
+              {typingUsers.length > 0 && (
+                <span className="ml-2 text-xs text-blue-500 italic">
+                  typing...
+                </span>
+              )}
             </div>
           </div>
-        </div>
+        </button>
 
-        {/* RIGHT SIDE: CROSS BUTTON AND MENU */}
+        {/* Right side buttons */}
         <div className="flex items-center gap-2">
-          {/* ✅ TOP-RIGHT CROSS BUTTON - BHAI KA SPECIFIC REQUEST */}
-          <button
-            onClick={() => navigate('/')}
-            className="p-2 hover:bg-red-50 rounded-full transition-all duration-200 group"
-            title="Go to Home Feed"
-          >
-            <X className="w-5 h-5 text-gray-500 group-hover:text-red-600" />
-          </button>
-          
           {/* Three dots menu */}
           <div className="relative">
             <button
@@ -412,7 +432,7 @@ const ChatWindow = () => {
         </div>
       </div>
 
-      {/* Messages Container - EQUAL PADDING ALL SIDES */}
+      {/* Messages Container */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-gray-50">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center">
@@ -427,7 +447,7 @@ const ChatWindow = () => {
             </p>
           </div>
         ) : (
-          <div className="space-y-3 max-w-4xl mx-auto">
+          <div className="space-y-3">
             {messages.map((msg, index) => (
               <div
                 key={msg._id || index}
@@ -438,7 +458,7 @@ const ChatWindow = () => {
                     msg.sender?._id === userData?._id
                       ? 'bg-blue-500 text-white rounded-tr-none'
                       : 'bg-white text-gray-800 border border-gray-200 rounded-tl-none'
-                  } ${msg.error ? 'bg-red-100 border-red-200' : ''}`}
+                  } ${msg.status === 'error' ? 'bg-red-100 border-red-200' : ''}`}
                 >
                   <p className="text-sm sm:text-base break-words">{msg.text}</p>
                   
@@ -461,9 +481,9 @@ const ChatWindow = () => {
         )}
       </div>
 
-      {/* Message Input - EQUAL PADDING ALL SIDES */}
+      {/* Message Input */}
       <div className="flex-shrink-0 p-4 border-t border-gray-200 bg-white">
-        <div className="relative max-w-4xl mx-auto">
+        <div className="relative">
           {/* Emoji Picker */}
           {showEmojiPicker && (
             <div className="emoji-picker-container absolute bottom-full right-0 mb-2 z-50">
