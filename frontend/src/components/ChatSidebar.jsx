@@ -1,15 +1,70 @@
+// src/components/ChatSidebar.jsx
 import React, { useState, useEffect, useContext } from "react";
-import { MessageSquare, Users } from "lucide-react";
-import { getChats } from "../services/chat";
+import { Search, MessageSquare, Users, ArrowLeft } from "lucide-react";
+import { getChats, startChat } from "../services/chat";
+import { searchUsers } from "../services/user";
 import { SocketContext } from "../context/SocketContext";
 import { AuthContext } from "../context/AuthContext";
-import SearchComponent from "./Search/SearchComponent";
+import { useNavigate } from "react-router-dom";
 
 const ChatSidebar = () => {
   const [chats, setChats] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  
   const { socket } = useContext(SocketContext);
   const { userData } = useContext(AuthContext);
+  const navigate = useNavigate();
+
+  // Calculate total unread count
+  const calculateTotalUnread = () => {
+    if (!chats.length || !userData?._id) return 0;
+    
+    let total = 0;
+    chats.forEach(chat => {
+      // Handle both Map and object types for unreadCounts
+      if (chat.unreadCounts && chat.unreadCounts.get) {
+        // It's a Map
+        total += chat.unreadCounts.get(userData._id.toString()) || 0;
+      } else if (chat.unreadCounts && typeof chat.unreadCounts === 'object') {
+        // It's a plain object
+        total += chat.unreadCounts[userData._id.toString()] || 0;
+      } else if (chat.unreadCount !== undefined) {
+        // Direct unreadCount property
+        total += chat.unreadCount || 0;
+      }
+    });
+    
+    return total;
+  };
+
+  // Calculate users with unread messages
+  const calculateUsersWithUnread = () => {
+    if (!chats.length || !userData?._id) return 0;
+    
+    let usersWithUnread = 0;
+    chats.forEach(chat => {
+      let unreadCount = 0;
+      
+      if (chat.unreadCounts && chat.unreadCounts.get) {
+        unreadCount = chat.unreadCounts.get(userData._id.toString()) || 0;
+      } else if (chat.unreadCounts && typeof chat.unreadCounts === 'object') {
+        unreadCount = chat.unreadCounts[userData._id.toString()] || 0;
+      } else if (chat.unreadCount !== undefined) {
+        unreadCount = chat.unreadCount || 0;
+      }
+      
+      if (unreadCount > 0) {
+        usersWithUnread++;
+      }
+    });
+    
+    return usersWithUnread;
+  };
 
   // Fetch real chats
   const fetchChats = async () => {
@@ -18,6 +73,7 @@ const ChatSidebar = () => {
       const response = await getChats();
       if (response.data.success) {
         setChats(response.data.data);
+        console.log('✅ Chats loaded:', response.data.data.length);
       }
     } catch (error) {
       console.error("Error fetching chats:", error);
@@ -30,35 +86,119 @@ const ChatSidebar = () => {
     fetchChats();
   }, []);
 
-  // Listen for real-time chat updates
+  // Listen for real-time chat updates - SAFE VERSION
   useEffect(() => {
     if (socket) {
-      socket.on("chat_updated", (data) => {
+      const handleChatUpdated = (data) => {
+        console.log('🔄 Chat updated:', data);
+        
         setChats(prevChats => {
           const existingChatIndex = prevChats.findIndex(chat => chat._id === data.chatId);
           
           if (existingChatIndex >= 0) {
-            // Update existing chat
-            const updatedChats = [...prevChats];
-            updatedChats[existingChatIndex] = {
-              ...updatedChats[existingChatIndex],
-              lastMessage: data.lastMessage,
-              unreadCounts: data.unreadCount
-            };
-            return updatedChats.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-          } else {
-            // This should not happen often, but fetch chats again if new chat
-            fetchChats();
-            return prevChats;
+            // Create a deep copy
+            const updatedChats = JSON.parse(JSON.stringify(prevChats));
+            const chatToUpdate = updatedChats[existingChatIndex];
+            
+            // Update last message
+            if (data.lastMessage) {
+              chatToUpdate.lastMessage = data.lastMessage;
+            }
+            
+            // Update unread counts SAFELY - Convert Map to object if needed
+            if (data.unreadCount !== undefined && userData?._id) {
+              if (!chatToUpdate.unreadCounts) {
+                chatToUpdate.unreadCounts = {};
+              }
+              
+              // Convert Map to plain object if it's a Map
+              if (chatToUpdate.unreadCounts instanceof Map || chatToUpdate.unreadCounts.get) {
+                const plainObject = {};
+                chatToUpdate.unreadCounts.forEach((value, key) => {
+                  plainObject[key] = value;
+                });
+                chatToUpdate.unreadCounts = plainObject;
+              }
+              
+              // Now safely set the value
+              chatToUpdate.unreadCounts[userData._id.toString()] = data.unreadCount;
+            }
+            
+            // Update timestamp
+            chatToUpdate.updatedAt = new Date().toISOString();
+            
+            // Sort by updatedAt
+            return updatedChats.sort((a, b) => 
+              new Date(b.updatedAt) - new Date(a.updatedAt)
+            );
           }
+          
+          return prevChats;
         });
-      });
+      };
+
+      socket.on("chat_updated", handleChatUpdated);
+      socket.on("new_message", fetchChats);
 
       return () => {
-        socket.off("chat_updated");
+        socket.off("chat_updated", handleChatUpdated);
+        socket.off("new_message", fetchChats);
       };
     }
-  }, [socket]);
+  }, [socket, userData]);
+
+  // Search users function
+  const handleSearch = async (query) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    try {
+      setSearchLoading(true);
+      const response = await searchUsers(query);
+      if (response.data.success) {
+        // Filter out current user
+        const filteredResults = response.data.data.filter(user => 
+          user._id !== userData?._id
+        );
+        setSearchResults(filteredResults);
+        setShowSearchResults(true);
+      }
+    } catch (error) {
+      console.error("Search error:", error);
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  // Debounced search
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      handleSearch(searchQuery);
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
+
+  // Start new chat with user
+  const handleStartChat = async (user) => {
+    try {
+      const response = await startChat(user._id);
+      if (response.data.success) {
+        const newChat = response.data.data;
+        setChats(prev => [newChat, ...prev]);
+        navigate(`/chat/${newChat._id}`);
+        setSearchQuery("");
+        setShowSearchResults(false);
+      }
+    } catch (error) {
+      console.error("Start chat error:", error);
+      alert(error.response?.data?.message || "Failed to start chat");
+    }
+  };
 
   const formatTime = (date) => {
     if (!date) return "";
@@ -68,42 +208,144 @@ const ChatSidebar = () => {
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
 
-    if (minutes < 1) return "Just now";
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    return `${days}d ago`;
+    if (minutes < 1) return "now";
+    if (minutes < 60) return `${minutes}m`;
+    if (hours < 24) return `${hours}h`;
+    return `${days}d`;
   };
 
   const getOtherParticipant = (participants) => {
+    if (!participants || !Array.isArray(participants)) return null;
     return participants.find(participant => participant._id !== userData?._id);
   };
 
   const getUnreadCount = (chat) => {
-    return chat.unreadCounts?.get?.(userData?._id) || 0;
+    if (!chat || !userData?._id) return 0;
+    
+    // Check different formats of unreadCounts
+    if (chat.unreadCounts && chat.unreadCounts.get) {
+      return chat.unreadCounts.get(userData._id.toString()) || 0;
+    }
+    
+    if (chat.unreadCounts && typeof chat.unreadCounts === 'object') {
+      return chat.unreadCounts[userData._id.toString()] || 0;
+    }
+    
+    if (chat.unreadCount !== undefined) {
+      return chat.unreadCount || 0;
+    }
+    
+    return 0;
   };
 
-  const handleUserSelect = (chat) => {
-    // Redirect to the new chat
-    window.location.href = `/chat/${chat._id}`;
+  // Get last message preview
+  const getLastMessagePreview = (chat) => {
+    if (!chat.lastMessage) return "Start a conversation";
+    
+    let preview = chat.lastMessage.text || "";
+    
+    if (chat.lastMessage.messageType === 'image') {
+      preview = "📷 Image";
+    } else if (chat.lastMessage.messageType === 'file') {
+      preview = "📎 File";
+    }
+    
+    if (chat.lastMessage.sender?._id === userData?._id) {
+      return `You: ${preview}`;
+    }
+    
+    return preview;
   };
+
+  const totalUnread = calculateTotalUnread();
+  const usersWithUnread = calculateUsersWithUnread();
 
   return (
-    <div className="h-full flex flex-col bg-white">
+    <div className="h-full flex flex-col bg-white relative">
       {/* Header */}
       <div className="p-4 border-b border-gray-200">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-gray-800">Messages</h2>
-          <button className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center hover:bg-blue-200 transition-colors">
-            <MessageSquare className="w-4 h-4 text-blue-600" />
+          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+            Messages
+            {usersWithUnread > 0 && (
+              <span className="bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                {usersWithUnread > 9 ? '9+' : usersWithUnread}
+              </span>
+            )}
+          </h2>
+          {/* CHANGED: Plus button replaced with Left Arrow button */}
+          <button 
+            onClick={() => navigate('/')}
+            className="w-8 h-8 bg-blue-500 hover:bg-blue-600 rounded-full flex items-center justify-center transition-colors duration-200 shadow-sm"
+            title="Go to Home"
+          >
+            <ArrowLeft className="w-4 h-4 text-white" />
           </button>
         </div>
         
-        {/* Search Component for Chat */}
-        <SearchComponent 
-          mode="chat" 
-          onUserSelect={handleUserSelect}
-        />
+        {/* Search Bar */}
+        <div className="relative">
+          <Search className="absolute left-3 top-3 text-gray-400 w-4 h-4" />
+          <input
+            type="text"
+            placeholder="Search users to message..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => searchQuery && setShowSearchResults(true)}
+            className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
       </div>
+
+      {/* Search Results Dropdown */}
+      {showSearchResults && (
+        <div className="absolute top-28 left-4 right-4 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-80 overflow-y-auto z-50">
+          {searchLoading ? (
+            <div className="p-4 text-center">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="text-gray-500 mt-2">Searching...</p>
+            </div>
+          ) : searchResults.length > 0 ? (
+            <div className="py-2">
+              {searchResults.map((user) => (
+                <button
+                  key={user._id}
+                  onClick={() => handleStartChat(user)}
+                  className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center justify-between transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      {user.avatar ? (
+                        <img 
+                          src={user.avatar} 
+                          alt={user.name}
+                          className="w-10 h-10 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                          {user.name?.charAt(0) || "U"}
+                        </div>
+                      )}
+                      {user.onlineStatus === 'online' && (
+                        <div className="absolute bottom-0 right-0 w-2 h-2 bg-green-500 rounded-full border-2 border-white"></div>
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-800 text-sm">{user.name}</p>
+                      <p className="text-xs text-gray-500">@{user.username}</p>
+                    </div>
+                  </div>
+                  <MessageSquare className="w-4 h-4 text-gray-400" />
+                </button>
+              ))}
+            </div>
+          ) : searchQuery.length >= 2 ? (
+            <div className="p-4 text-center text-gray-500">
+              No users found
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {/* Chat List */}
       <div className="flex-1 overflow-y-auto">
@@ -115,28 +357,51 @@ const ChatSidebar = () => {
           <div className="flex flex-col items-center justify-center h-full text-center p-8">
             <Users className="w-16 h-16 text-gray-300 mb-4" />
             <h3 className="text-lg font-semibold text-gray-600 mb-2">No conversations yet</h3>
-            <p className="text-gray-400 text-sm">Use the search bar above to start a conversation.</p>
+            <p className="text-gray-400 text-sm mb-4">Start a conversation to see it here.</p>
+            <p className="text-gray-400 text-sm">Use the search bar above to find users.</p>
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
             {chats.map((chat) => {
               const otherUser = getOtherParticipant(chat.participants);
               const unreadCount = getUnreadCount(chat);
+              const lastMessagePreview = getLastMessagePreview(chat);
+              
+              if (!otherUser) return null;
               
               return (
                 <div
                   key={chat._id}
-                  className="p-4 hover:bg-gray-50 cursor-pointer transition-colors"
-                  onClick={() => window.location.href = `/chat/${chat._id}`}
+                  className="p-4 hover:bg-gray-50 cursor-pointer transition-colors relative"
+                  onClick={() => navigate(`/chat/${chat._id}`)}
                 >
                   <div className="flex items-center gap-3">
-                    {/* Avatar */}
+                    {/* Avatar with Unread Badge */}
                     <div className="relative">
-                      <div className="w-12 h-12 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                        {otherUser?.name?.charAt(0) || "U"}
-                      </div>
-                      {otherUser?.onlineStatus === "online" && (
+                      {otherUser.avatar ? (
+                        <img 
+                          src={otherUser.avatar} 
+                          alt={otherUser.name}
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                          {otherUser.name?.charAt(0) || "U"}
+                        </div>
+                      )}
+                      
+                      {/* Online Status */}
+                      {otherUser.onlineStatus === "online" && (
                         <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                      )}
+                      
+                      {/* Unread Message Badge - RED CIRCLE with count */}
+                      {unreadCount > 0 && (
+                        <div className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+                          <span className="text-white text-xs font-bold">
+                            {unreadCount > 9 ? '9+' : unreadCount}
+                          </span>
+                        </div>
                       )}
                     </div>
 
@@ -144,25 +409,18 @@ const ChatSidebar = () => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
                         <h4 className="font-semibold text-gray-800 text-sm truncate">
-                          {otherUser?.name || "Unknown User"}
+                          {otherUser.name || "Unknown User"}
                         </h4>
                         <span className="text-xs text-gray-400">
-                          {formatTime(chat.lastMessage?.createdAt)}
+                          {formatTime(chat.lastMessage?.createdAt || chat.updatedAt)}
                         </span>
                       </div>
-                      <p className="text-gray-500 text-sm truncate">
-                        {chat.lastMessage?.text || "Start a conversation"}
+                      <p className={`text-sm truncate ${
+                        unreadCount > 0 ? 'font-semibold text-gray-800' : 'text-gray-500'
+                      }`}>
+                        {lastMessagePreview}
                       </p>
                     </div>
-
-                    {/* Unread Badge */}
-                    {unreadCount > 0 && (
-                      <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-xs font-semibold">
-                          {unreadCount}
-                        </span>
-                      </div>
-                    )}
                   </div>
                 </div>
               );
@@ -170,6 +428,14 @@ const ChatSidebar = () => {
           </div>
         )}
       </div>
+
+      {/* Overlay to close search results when clicking outside */}
+      {showSearchResults && (
+        <div 
+          className="fixed inset-0 z-40"
+          onClick={() => setShowSearchResults(false)}
+        />
+      )}
     </div>
   );
 };

@@ -1,14 +1,18 @@
-// src/services/api.js - COMPLETE FIXED VERSION
+// src/services/api.js 
 import axios from "axios";
 
 const BASE_URL = "http://localhost:5000/api";
 
+// Create axios instance
 const API = axios.create({
   baseURL: BASE_URL,
-  timeout: 30000, // Increased timeout
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
 });
 
-// ✅ Request interceptor
+// ✅ SINGLE Request Interceptor
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem("trendzz_token");
   
@@ -16,15 +20,17 @@ API.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
   
-  if (!config.headers['Content-Type'] && !config.headers['content-type']) {
+  // For multipart/form-data, don't overwrite Content-Type
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
+  } else if (!config.headers['Content-Type'] && !config.headers['content-type']) {
     config.headers['Content-Type'] = 'application/json';
   }
   
   console.log('📡 API Request:', {
     url: config.url,
     method: config.method,
-    hasToken: !!token,
-    contentType: config.headers['Content-Type']
+    hasToken: !!token
   });
   
   return config;
@@ -33,7 +39,7 @@ API.interceptors.request.use((config) => {
   return Promise.reject(error);
 });
 
-// ✅ Response interceptor
+// ✅ SINGLE Response Interceptor
 API.interceptors.response.use(
   (response) => {
     console.log('✅ API Response:', {
@@ -42,13 +48,8 @@ API.interceptors.response.use(
       data: response.data
     });
     
-    // Return consistent format
-    return {
-      success: response.data?.success !== false,
-      data: response.data,
-      status: response.status,
-      headers: response.headers
-    };
+    // Return axios response object directly
+    return response;
   },
   (error) => {
     console.error('❌ API Error:', {
@@ -58,22 +59,53 @@ API.interceptors.response.use(
       response: error.response?.data
     });
     
+    // Handle 401 Unauthorized
     if (error.response?.status === 401) {
       localStorage.removeItem("trendzz_token");
       localStorage.removeItem("trendzz_user");
       window.location.href = "/login";
     }
     
+    // Return error in consistent format
     return Promise.reject({
       success: false,
       message: error.response?.data?.message || error.message || 'Network error',
-      data: error.response?.data,
-      error: error
+      status: error.response?.status,
+      data: error.response?.data
     });
   }
 );
 
-// ✅ POSTS API - COMPLETE FIXED WITH BOTH FUNCTIONS
+// ✅ CHAT API
+export const chatAPI = {
+  // Get all chats
+  getChats: () => API.get('/chats'),
+  
+  // Start a new chat
+  startChat: (receiverId) => API.post('/chats/start', { receiverId }),
+  
+  // Get messages for a chat
+  getMessages: (chatId, page = 1) => 
+    API.get(`/chats/${chatId}/messages`, { params: { page } }),
+  
+  // Send a message
+  sendMessage: (chatId, messageData) => 
+    API.post(`/chats/${chatId}/messages`, messageData),
+  
+  // Mark messages as read
+  markAsRead: (chatId) => 
+    API.put(`/chats/${chatId}/read`),
+  
+  // Delete a message
+  deleteMessage: (messageId) => 
+    API.delete(`/messages/${messageId}`),
+  
+  // React to a message
+  reactToMessage: (messageId, emoji) => 
+    API.post(`/messages/${messageId}/react`, { emoji }),
+};
+
+// ✅ POSTS API - COMPLETE FIXED WITH ALL FUNCTIONS
 export const postsAPI = {
   // ✅ 1. getPosts - FOR HomeFeed.jsx (required for error fix)
   getPosts: (page = 1, limit = 100) => 
@@ -98,16 +130,14 @@ export const postsAPI = {
       
       const response = await axios.post(`${BASE_URL}/posts`, formData, {
         headers: { 
-          'Content-Type': 'multipart/form-data',
           'Authorization': `Bearer ${token}`
+          // Don't set Content-Type for FormData
         },
         onUploadProgress,
         timeout: 60000
       });
       
-      console.log('✅ Post created response:', response.data);
       return response.data;
-      
     } catch (error) {
       console.error('❌ Create post error:', error);
       throw error.response?.data || error;
@@ -158,6 +188,6 @@ export const getFeed = (params) => API.get("/posts", { params });
 export const reactPost = (postId, type) => API.post(`/posts/${postId}/react`, { type });
 export const commentPost = (postId, text) => API.post(`/posts/${postId}/comment`, { text });
 export const deleteComment = (postId, commentId) => API.delete(`/posts/${postId}/comment/${commentId}`);
-export const getPosts = (page = 1, limit = 100) => API.get("/posts", { params: { page, limit } }); // ✅ Added
+export const getPosts = (page = 1, limit = 100) => API.get("/posts", { params: { page, limit } });
 
 export default API;

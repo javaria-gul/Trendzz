@@ -10,6 +10,7 @@ export const sendMessage = (chatId, messageData) => API.post(`/chats/${chatId}/m
 export const markAsRead = (chatId) => API.put(`/chats/${chatId}/read`);
 export const deleteMessage = (messageId) => API.delete(`/messages/${messageId}`);
 export const reactToMessage = (messageId, emoji) => API.post(`/messages/${messageId}/react`, { emoji });
+export const deleteChat = (chatId) => API.delete(`/chats/${chatId}`);
 
 // Socket service
 export const initializeSocket = (token) => {
