@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../../context/AuthContext";
-import { getMLRecommendations } from "../../services/user"; // REMOVE followUser import
+import { getMLRecommendations } from "../../services/user";
 
 const SidebarRight = () => {
   const [suggestions, setSuggestions] = useState([]);
@@ -19,16 +19,14 @@ const SidebarRight = () => {
   const [error, setError] = useState(null);
   const [mlStats, setMlStats] = useState(null);
   const [followingStates, setFollowingStates] = useState({});
-  const { userData, handleFollowAction } = useContext(AuthContext); // ADD handleFollowAction
+  const { userData, handleFollowAction } = useContext(AuthContext);
   const navigate = useNavigate();
 
-  // Handle follow button click - UPDATED
+  // Handle follow button click
   const handleFollow = async (userId) => {
     try {
       setFollowingStates(prev => ({ ...prev, [userId]: true }));
-      
-      // Use the centralized follow function from AuthContext
-      const result = await handleFollowAction(userId, false); // false = follow action
+      const result = await handleFollowAction(userId, false);
       
       if (result.success) {
         setSuggestions(prev => prev.filter(user => user._id !== userId));
@@ -40,21 +38,19 @@ const SidebarRight = () => {
       setFollowingStates(prev => ({ ...prev, [userId]: false }));
     }
   };
-  // Navigate to user profile
+
   const handleProfileClick = (userId) => {
     navigate(`/profile/${userId}`);
   };
-  // Fetch ML recommendations
+
   useEffect(() => {
     const fetchRecommendations = async () => {
       if (!userData) return;
-
       setLoading(true);
       setError(null);
 
       try {
         const response = await getMLRecommendations();
-        
         if (response.success && response.data) {
           setSuggestions(response.data);
           setMlStats({
@@ -77,7 +73,7 @@ const SidebarRight = () => {
     return () => clearInterval(interval);
   }, [userData]);
 
-  // Similarity Badge Component
+  // Similarity Badge Component - FIXED
   const SimilarityBadge = ({ score }) => {
     let color = "bg-gray-100 text-gray-800";
     if (score >= 80) color = "bg-green-100 text-green-800";
@@ -85,13 +81,13 @@ const SidebarRight = () => {
     else if (score >= 40) color = "bg-yellow-100 text-yellow-800";
     
     return (
-      <div className={`px-2 py-0.5 rounded-full text-xs font-semibold ${color}`}>
-        {Math.round(score)}% match
+      <div className={`px-2 py-0.5 rounded-full text-xs font-semibold ${color} whitespace-nowrap inline-flex items-center`}>
+        <span className="font-bold">{Math.round(score)}%</span>
+        <span className="ml-1">match</span>
       </div>
     );
   };
 
-  // Get user role icon
   const getUserRoleIcon = (role) => {
     if (role === 'faculty') {
       return <Briefcase size={10} className="text-amber-600" />;
@@ -99,7 +95,6 @@ const SidebarRight = () => {
     return <GraduationCap size={10} className="text-blue-600" />;
   };
 
-  // Get similarity color
   const getSimilarityColor = (score) => {
     if (score >= 80) return "bg-green-500";
     if (score >= 60) return "bg-blue-500";
@@ -109,31 +104,40 @@ const SidebarRight = () => {
 
   return (
     <div className="hidden md:flex flex-col w-64 h-[calc(100vh-30px)] fixed right-3 top-4 bg-blue-900 rounded-2xl overflow-hidden">
-      
-      {/* ML-Powered Suggestions Card */}
       <div className="bg-white rounded-xl shadow m-3">
         <div className="p-3">
-          {/* Header */}
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <Cpu size={16} className="text-blue-600" />
-              <h2 className="font-bold text-gray-800 text-sm">
-                Smart Suggestions
-              </h2>
+              <h2 className="font-bold text-gray-800 text-sm">Smart Suggestions</h2>
             </div>
-            {mlStats && (
-              <div className="text-xs text-gray-500">
-                AI-Powered
-              </div>
-            )}
+            {mlStats && <div className="text-xs text-gray-500">AI-Powered</div>}
           </div>
 
-          {/* Current User Info */}
+          {/* Current User Info - COMPACT */}
           {userData && (
-            <div className="mb-3 p-2 bg-blue-50 rounded-lg">
+            <div className="mb-2 p-1.5 bg-blue-50 rounded-lg">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                  {userData.name?.charAt(0) || 'U'}
+                <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 border border-gray-300">
+                  {userData.avatar ? (
+                    <img 
+                      src={userData.avatar} 
+                      alt={userData.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.parentElement.innerHTML = `
+                          <div class="w-full h-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white text-[10px] font-bold">
+                            ${userData.name?.charAt(0) || 'U'}
+                          </div>
+                        `;
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white text-[10px] font-bold">
+                      {userData.name?.charAt(0) || 'U'}
+                    </div>
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1">
@@ -142,7 +146,7 @@ const SidebarRight = () => {
                       {userData.name?.split(' ')[0] || 'User'}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-600 truncate">
+                  <p className="text-[10px] text-gray-600 truncate">
                     {userData.role === 'student' 
                       ? `Batch ${userData.batch || 'N/A'}, Sem ${userData.semester || 'N/A'}`
                       : 'Faculty Member'}
@@ -152,33 +156,30 @@ const SidebarRight = () => {
             </div>
           )}
 
-          {/* Loading State */}
           {loading ? (
-            <div className="py-6 text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="text-gray-500 text-xs mt-2">Loading...</p>
+            <div className="py-4 text-center">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="text-gray-500 text-xs mt-1">Loading...</p>
             </div>
           ) : error ? (
-            <div className="py-6 text-center">
-              <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-2" />
+            <div className="py-4 text-center">
+              <AlertCircle className="w-6 h-6 text-red-400 mx-auto mb-1" />
               <p className="text-red-600 text-xs font-medium">Error</p>
-              <p className="text-gray-500 text-xs mt-1">{error}</p>
+              <p className="text-gray-400 text-xs mt-0.5">{error}</p>
             </div>
           ) : suggestions.length > 0 ? (
             <>
-              {/* Suggestions Header */}
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-gray-700 text-xs flex items-center gap-1">
-                  <Users size={14} />
+                  <Users size={12} />
                   <span>Suggested Connections</span>
                 </h3>
-                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">
                   {suggestions.length}
                 </span>
               </div>
 
-              {/* Suggestions List - FIXED: No horizontal scroll */}
-              <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                 {suggestions.map((user) => {
                   const isFollowing = followingStates[user._id];
                   
@@ -187,16 +188,15 @@ const SidebarRight = () => {
                       key={user._id} 
                       className="bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-200 transition-colors"
                     >
-                      <div className="p-2">
-                        {/* User Row - FIXED: Better layout */}
-                        <div className="flex items-start gap-2">
-                          {/* Avatar */}
+                      <div className="p-1.5">
+                        <div className="flex items-start gap-1.5">
+                          {/* Avatar - Smaller */}
                           <div 
                             className="cursor-pointer flex-shrink-0"
                             onClick={() => handleProfileClick(user._id)}
                           >
                             <div className="relative">
-                              <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white text-sm font-bold overflow-hidden">
+                              <div className="w-8 h-8 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold overflow-hidden">
                                 {user.avatar ? (
                                   <img 
                                     src={user.avatar} 
@@ -207,13 +207,13 @@ const SidebarRight = () => {
                                   user.name?.charAt(0) || 'U'
                                 )}
                               </div>
-                              <div className="absolute -bottom-1 -right-1 p-0.5 bg-white rounded-full border border-gray-200">
+                              <div className="absolute -bottom-0.5 -right-0.5 p-0.5 bg-white rounded-full border border-gray-200">
                                 {getUserRoleIcon(user.role)}
                               </div>
                             </div>
                           </div>
                           
-                          {/* User Info - FIXED: Truncate long text */}
+                          {/* User Info - COMPACT */}
                           <div 
                             className="flex-1 min-w-0 cursor-pointer"
                             onClick={() => handleProfileClick(user._id)}
@@ -223,38 +223,41 @@ const SidebarRight = () => {
                                 <p className="font-semibold text-gray-900 text-xs truncate">
                                   {user.name}
                                 </p>
-                                <p className="text-xs text-gray-500 truncate mt-0.5">
+                                <p className="text-[10px] text-gray-500 truncate mt-px">
                                   @{user.username}
                                 </p>
                               </div>
                             </div>
                             
-                            {/* Similarity Badge */}
-                            <div className="mt-1">
+                            <div className="mt-0.5">
                               <SimilarityBadge score={user.similarityScore} />
                             </div>
                             
-                            {/* Reason */}
-                            <p className="text-xs text-gray-600 mt-1 line-clamp-1">
-                              {user.reason}
-                            </p>
-                            
-                            {/* Tags - FIXED: Wrap properly */}
-                            <div className="flex flex-wrap gap-1 mt-2">
+                            {/* FIXED: Filter out "Batch..." from reason
+                            {user.reason && user.reason !== "Batch..." && !user.reason.includes("Batch...") && (
+                              <p className="text-[10px] text-gray-600 mt-0.5 line-clamp-1">
+                                {user.reason.replace("Batch...", "").trim()}
+                              </p>
+                            )}
+                             */}
+                            {/* Tags - COMPACT HORIZONTAL */}
+                            <div className="flex items-center gap-1 mt-0.5">
                               {user.batch && (
-                                <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
-                                  Batch {user.batch}
+                                <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full whitespace-nowrap inline-flex items-center font-medium">
+                                  <span>Batch</span>
+                                  <span className="ml-0.5 font-bold">{user.batch}</span>
                                 </span>
                               )}
                               {user.semester && (
-                                <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
-                                  Sem {user.semester}
+                                <span className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full whitespace-nowrap inline-flex items-center font-medium">
+                                  <span>Sem</span>
+                                  <span className="ml-0.5 font-bold">{user.semester}</span>
                                 </span>
                               )}
                             </div>
                           </div>
                           
-                          {/* Follow Button - FIXED: Proper size and position */}
+                          {/* Follow Button - Smaller */}
                           <div className="flex-shrink-0">
                             <button
                               onClick={(e) => {
@@ -263,7 +266,7 @@ const SidebarRight = () => {
                               }}
                               disabled={isFollowing}
                               className={`
-                                flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200
+                                flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-all duration-200
                                 ${isFollowing 
                                   ? 'bg-green-100 text-green-700 border border-green-200' 
                                   : 'bg-red-700 text-white hover:bg-blue-900'
@@ -273,12 +276,12 @@ const SidebarRight = () => {
                             >
                               {isFollowing ? (
                                 <>
-                                  <UserCheck size={12} />
+                                  <UserCheck size={10} />
                                   <span>Following</span>
                                 </>
                               ) : (
                                 <>
-                                  <UserPlus size={12} />
+                                  <UserPlus size={10} />
                                   <span>Follow</span>
                                 </>
                               )}
@@ -286,17 +289,17 @@ const SidebarRight = () => {
                           </div>
                         </div>
                         
-                        {/* Similarity Bar - FIXED: Better alignment */}
-                        <div className="mt-2 pt-2 border-t border-gray-100">
-                          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                        {/* Similarity Bar - Smaller */}
+                        <div className="mt-1 pt-1 border-t border-gray-100">
+                          <div className="flex items-center justify-between text-[10px] text-gray-500 mb-0.5">
                             <span>Similarity</span>
                             <span className={`font-bold ${getSimilarityColor(user.similarityScore).replace('bg-', 'text-')}`}>
                               {Math.round(user.similarityScore)}%
                             </span>
                           </div>
-                          <div className="w-full bg-gray-200 rounded-full h-1.5">
+                          <div className="w-full bg-gray-200 rounded-full h-1">
                             <div 
-                              className={`h-1.5 rounded-full ${getSimilarityColor(user.similarityScore)}`}
+                              className={`h-1 rounded-full ${getSimilarityColor(user.similarityScore)}`}
                               style={{ width: `${user.similarityScore}%` }}
                             />
                           </div>
@@ -307,22 +310,20 @@ const SidebarRight = () => {
                 })}
               </div>
 
-              {/* Database Stats */}
-              <div className="mt-3 pt-3 border-t border-gray-200">
-                <div className="flex items-center justify-between text-xs text-gray-500">
+              <div className="mt-2 pt-2 border-t border-gray-200">
+                <div className="flex items-center justify-between text-[10px] text-gray-500">
                   <span>Live Database Query</span>
                   <span className="font-medium">{suggestions.length} matches</span>
                 </div>
               </div>
             </>
           ) : (
-            /* No Suggestions Found */
-            <div className="py-6 text-center">
-              <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-3">
-                <Users size={20} className="text-gray-400" />
+            <div className="py-4 text-center">
+              <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-2">
+                <Users size={16} className="text-gray-400" />
               </div>
-              <p className="text-gray-600 text-sm font-medium">No suggestions</p>
-              <p className="text-gray-400 text-xs mt-1">
+              <p className="text-gray-600 text-xs font-medium">No suggestions</p>
+              <p className="text-gray-400 text-[10px] mt-0.5">
                 {userData?.role === 'student' 
                   ? "Update your profile info" 
                   : "Complete profile details"}

@@ -5,7 +5,8 @@ import connectDB from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
 import postRoutes from "./routes/postRoutes.js";
 import userRoutes from "./routes/userRoutes.js"; // NEW IMPORT
-
+// In backend/server.js
+import mlRoutes from './routes/mlRoutes.js';
 
 dotenv.config();
 connectDB();
@@ -22,7 +23,9 @@ app.use(express.json());
 // server.js mein body parser ke section mein
 app.use(express.json({ limit: '50mb' })); // Default: 100kb
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
+// Add after other routes
+app.use('/api/ml', mlRoutes);  // NEW: ML endpoints
+// app.use('/api/users', userRoutes);  // EXISTING: Keep as is
 // Agar multer use kar rahe ho toh:
 // app.use(multer({ limits: { fileSize: 50 * 1024 * 1024 } }).any());
 app.use("/api/auth", authRoutes);
