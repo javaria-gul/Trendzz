@@ -1,5 +1,6 @@
+// src/components/ChatSidebar.jsx
 import React, { useState, useEffect, useContext } from "react";
-import { Search, MessageSquare, Users, Plus } from "lucide-react";
+import { Search, MessageSquare, Users, ArrowLeft } from "lucide-react";
 import { getChats, startChat } from "../services/chat";
 import { searchUsers } from "../services/user";
 import { SocketContext } from "../context/SocketContext";
@@ -13,10 +14,57 @@ const ChatSidebar = () => {
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState([]);
   
   const { socket } = useContext(SocketContext);
   const { userData } = useContext(AuthContext);
   const navigate = useNavigate();
+
+  // Calculate total unread count
+  const calculateTotalUnread = () => {
+    if (!chats.length || !userData?._id) return 0;
+    
+    let total = 0;
+    chats.forEach(chat => {
+      // Handle both Map and object types for unreadCounts
+      if (chat.unreadCounts && chat.unreadCounts.get) {
+        // It's a Map
+        total += chat.unreadCounts.get(userData._id.toString()) || 0;
+      } else if (chat.unreadCounts && typeof chat.unreadCounts === 'object') {
+        // It's a plain object
+        total += chat.unreadCounts[userData._id.toString()] || 0;
+      } else if (chat.unreadCount !== undefined) {
+        // Direct unreadCount property
+        total += chat.unreadCount || 0;
+      }
+    });
+    
+    return total;
+  };
+
+  // Calculate users with unread messages
+  const calculateUsersWithUnread = () => {
+    if (!chats.length || !userData?._id) return 0;
+    
+    let usersWithUnread = 0;
+    chats.forEach(chat => {
+      let unreadCount = 0;
+      
+      if (chat.unreadCounts && chat.unreadCounts.get) {
+        unreadCount = chat.unreadCounts.get(userData._id.toString()) || 0;
+      } else if (chat.unreadCounts && typeof chat.unreadCounts === 'object') {
+        unreadCount = chat.unreadCounts[userData._id.toString()] || 0;
+      } else if (chat.unreadCount !== undefined) {
+        unreadCount = chat.unreadCount || 0;
+      }
+      
+      if (unreadCount > 0) {
+        usersWithUnread++;
+      }
+    });
+    
+    return usersWithUnread;
+  };
 
   // Fetch real chats
   const fetchChats = async () => {
@@ -38,37 +86,66 @@ const ChatSidebar = () => {
     fetchChats();
   }, []);
 
-  // Listen for real-time chat updates
+  // Listen for real-time chat updates - SAFE VERSION
   useEffect(() => {
     if (socket) {
-      socket.on("chat_updated", (data) => {
+      const handleChatUpdated = (data) => {
         console.log('🔄 Chat updated:', data);
+        
         setChats(prevChats => {
           const existingChatIndex = prevChats.findIndex(chat => chat._id === data.chatId);
           
           if (existingChatIndex >= 0) {
-            // Update existing chat
-            const updatedChats = [...prevChats];
-            updatedChats[existingChatIndex] = {
-              ...updatedChats[existingChatIndex],
-              lastMessage: data.lastMessage,
-              unreadCounts: data.unreadCount
-            };
+            // Create a deep copy
+            const updatedChats = JSON.parse(JSON.stringify(prevChats));
+            const chatToUpdate = updatedChats[existingChatIndex];
+            
+            // Update last message
+            if (data.lastMessage) {
+              chatToUpdate.lastMessage = data.lastMessage;
+            }
+            
+            // Update unread counts SAFELY - Convert Map to object if needed
+            if (data.unreadCount !== undefined && userData?._id) {
+              if (!chatToUpdate.unreadCounts) {
+                chatToUpdate.unreadCounts = {};
+              }
+              
+              // Convert Map to plain object if it's a Map
+              if (chatToUpdate.unreadCounts instanceof Map || chatToUpdate.unreadCounts.get) {
+                const plainObject = {};
+                chatToUpdate.unreadCounts.forEach((value, key) => {
+                  plainObject[key] = value;
+                });
+                chatToUpdate.unreadCounts = plainObject;
+              }
+              
+              // Now safely set the value
+              chatToUpdate.unreadCounts[userData._id.toString()] = data.unreadCount;
+            }
+            
+            // Update timestamp
+            chatToUpdate.updatedAt = new Date().toISOString();
+            
             // Sort by updatedAt
-            return updatedChats.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-          } else {
-            // This should not happen often, but fetch chats again if new chat
-            fetchChats();
-            return prevChats;
+            return updatedChats.sort((a, b) => 
+              new Date(b.updatedAt) - new Date(a.updatedAt)
+            );
           }
+          
+          return prevChats;
         });
-      });
+      };
+
+      socket.on("chat_updated", handleChatUpdated);
+      socket.on("new_message", fetchChats);
 
       return () => {
-        socket.off("chat_updated");
+        socket.off("chat_updated", handleChatUpdated);
+        socket.off("new_message", fetchChats);
       };
     }
-  }, [socket]);
+  }, [socket, userData]);
 
   // Search users function
   const handleSearch = async (query) => {
@@ -82,9 +159,12 @@ const ChatSidebar = () => {
       setSearchLoading(true);
       const response = await searchUsers(query);
       if (response.data.success) {
-        setSearchResults(response.data.data || []);
+        // Filter out current user
+        const filteredResults = response.data.data.filter(user => 
+          user._id !== userData?._id
+        );
+        setSearchResults(filteredResults);
         setShowSearchResults(true);
-        console.log('🔍 Search results:', response.data.data);
       }
     } catch (error) {
       console.error("Search error:", error);
@@ -106,18 +186,13 @@ const ChatSidebar = () => {
   // Start new chat with user
   const handleStartChat = async (user) => {
     try {
-      console.log('💬 Starting chat with:', user.name);
       const response = await startChat(user._id);
       if (response.data.success) {
         const newChat = response.data.data;
-        // Add to chats list
         setChats(prev => [newChat, ...prev]);
-        // Navigate to chat
         navigate(`/chat/${newChat._id}`);
-        // Clear search
         setSearchQuery("");
         setShowSearchResults(false);
-        setSearchResults([]);
       }
     } catch (error) {
       console.error("Start chat error:", error);
@@ -133,10 +208,10 @@ const ChatSidebar = () => {
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
 
-    if (minutes < 1) return "Just now";
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    return `${days}d ago`;
+    if (minutes < 1) return "now";
+    if (minutes < 60) return `${minutes}m`;
+    if (hours < 24) return `${hours}h`;
+    return `${days}d`;
   };
 
   const getOtherParticipant = (participants) => {
@@ -145,27 +220,67 @@ const ChatSidebar = () => {
   };
 
   const getUnreadCount = (chat) => {
-    if (!chat.unreadCounts || typeof chat.unreadCounts.get !== 'function') return 0;
-    return chat.unreadCounts.get(userData?._id) || 0;
+    if (!chat || !userData?._id) return 0;
+    
+    // Check different formats of unreadCounts
+    if (chat.unreadCounts && chat.unreadCounts.get) {
+      return chat.unreadCounts.get(userData._id.toString()) || 0;
+    }
+    
+    if (chat.unreadCounts && typeof chat.unreadCounts === 'object') {
+      return chat.unreadCounts[userData._id.toString()] || 0;
+    }
+    
+    if (chat.unreadCount !== undefined) {
+      return chat.unreadCount || 0;
+    }
+    
+    return 0;
   };
+
+  // Get last message preview
+  const getLastMessagePreview = (chat) => {
+    if (!chat.lastMessage) return "Start a conversation";
+    
+    let preview = chat.lastMessage.text || "";
+    
+    if (chat.lastMessage.messageType === 'image') {
+      preview = "📷 Image";
+    } else if (chat.lastMessage.messageType === 'file') {
+      preview = "📎 File";
+    }
+    
+    if (chat.lastMessage.sender?._id === userData?._id) {
+      return `You: ${preview}`;
+    }
+    
+    return preview;
+  };
+
+  const totalUnread = calculateTotalUnread();
+  const usersWithUnread = calculateUsersWithUnread();
 
   return (
     <div className="h-full flex flex-col bg-white relative">
       {/* Header */}
       <div className="p-4 border-b border-gray-200">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-gray-800">Messages</h2>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => navigate('/chat')}
-              className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center hover:bg-blue-200 transition-colors"
-            >
-              <Plus className="w-4 h-4 text-blue-600" />
-            </button>
-            <button className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center hover:bg-blue-200 transition-colors">
-              <MessageSquare className="w-4 h-4 text-blue-600" />
-            </button>
-          </div>
+          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+            Messages
+            {usersWithUnread > 0 && (
+              <span className="bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                {usersWithUnread > 9 ? '9+' : usersWithUnread}
+              </span>
+            )}
+          </h2>
+          {/* CHANGED: Plus button replaced with Left Arrow button */}
+          <button 
+            onClick={() => navigate('/')}
+            className="w-8 h-8 bg-blue-500 hover:bg-blue-600 rounded-full flex items-center justify-center transition-colors duration-200 shadow-sm"
+            title="Go to Home"
+          >
+            <ArrowLeft className="w-4 h-4 text-white" />
+          </button>
         </div>
         
         {/* Search Bar */}
@@ -250,20 +365,18 @@ const ChatSidebar = () => {
             {chats.map((chat) => {
               const otherUser = getOtherParticipant(chat.participants);
               const unreadCount = getUnreadCount(chat);
+              const lastMessagePreview = getLastMessagePreview(chat);
               
-              if (!otherUser) {
-                console.log('❌ No other user found in chat:', chat);
-                return null;
-              }
+              if (!otherUser) return null;
               
               return (
                 <div
                   key={chat._id}
-                  className="p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                  className="p-4 hover:bg-gray-50 cursor-pointer transition-colors relative"
                   onClick={() => navigate(`/chat/${chat._id}`)}
                 >
                   <div className="flex items-center gap-3">
-                    {/* Avatar */}
+                    {/* Avatar with Unread Badge */}
                     <div className="relative">
                       {otherUser.avatar ? (
                         <img 
@@ -276,8 +389,19 @@ const ChatSidebar = () => {
                           {otherUser.name?.charAt(0) || "U"}
                         </div>
                       )}
+                      
+                      {/* Online Status */}
                       {otherUser.onlineStatus === "online" && (
                         <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                      )}
+                      
+                      {/* Unread Message Badge - RED CIRCLE with count */}
+                      {unreadCount > 0 && (
+                        <div className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+                          <span className="text-white text-xs font-bold">
+                            {unreadCount > 9 ? '9+' : unreadCount}
+                          </span>
+                        </div>
                       )}
                     </div>
 
@@ -288,22 +412,15 @@ const ChatSidebar = () => {
                           {otherUser.name || "Unknown User"}
                         </h4>
                         <span className="text-xs text-gray-400">
-                          {formatTime(chat.lastMessage?.createdAt)}
+                          {formatTime(chat.lastMessage?.createdAt || chat.updatedAt)}
                         </span>
                       </div>
-                      <p className="text-gray-500 text-sm truncate">
-                        {chat.lastMessage?.text || "Start a conversation"}
+                      <p className={`text-sm truncate ${
+                        unreadCount > 0 ? 'font-semibold text-gray-800' : 'text-gray-500'
+                      }`}>
+                        {lastMessagePreview}
                       </p>
                     </div>
-
-                    {/* Unread Badge */}
-                    {unreadCount > 0 && (
-                      <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-xs font-semibold">
-                          {unreadCount}
-                        </span>
-                      </div>
-                    )}
                   </div>
                 </div>
               );
