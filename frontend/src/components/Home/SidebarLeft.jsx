@@ -17,7 +17,7 @@ const SidebarLeft = () => {
   const [notifications, setNotifications] = useState([]);
   const dropdownRef = useRef(null);
 
-  // MENU - Search goes to /search page, Notifications is dropdown haha
+  // MENU - Search goes to /search page, Notifications is dropdown hahahaha
   const menu = [
     { label: "Home", icon: <Home size={20} />, path: "/" },
     { label: "Chat", icon: <MessageCircle size={20} />, path: "/chat" },
