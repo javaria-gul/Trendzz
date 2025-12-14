@@ -458,7 +458,7 @@ const setupSocket = (server) => {
           lastSeen: new Date()
         });
 
-        console.log(`📢 User ${socket.userId} status updated to offline");
+        console.log(`📢 User ${socket.userId} status updated to offline`);
 
       } catch (error) {
         console.error("❌ Disconnect error:", error);
