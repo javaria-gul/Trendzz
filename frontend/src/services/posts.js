@@ -1,3 +1,4 @@
+// src/services/posts.js (COMPLETE FIXED VERSION)
 import API from "./api";
 
 // ✅ Master prompt ke according updated APIs
@@ -15,32 +16,37 @@ export const postsAPI = {
       onUploadProgress
     }),
   
-  // ✅ FIXED: Like/Unlike post (NEW FORMAT)
-  likePost: (postId) => 
-    API.post(`/posts/${postId}/like`),  // ✅ postId URL mein
+  // ✅ FIXED: Like/Unlike post
+  likePost: (postId, reactionType = 'like') => 
+    API.post(`/posts/${postId}/like`, { reactionType }),
   
-  // Add comment (master prompt ka format)
+  // Add comment
   addComment: (postId, text) => 
     API.post('/posts/comment', { postId, text }),
   
-  // Delete post
+  // ✅ FIXED: Delete post
   deletePost: (postId) => 
     API.delete(`/posts/${postId}`),
+  
+  // ✅ ADDED: Delete comment
+  deleteComment: (postId, commentId) => 
+    API.delete(`/posts/${postId}/comment/${commentId}`),
   
   // Get posts by specific user
   getUserPosts: (userId, page = 1, limit = 10) => 
     API.get(`/posts/user/${userId}`, { params: { page, limit } }),
   
-  // ✅ For backward compatibility with existing code
+  // For backward compatibility
   getFeed: (params) => API.get("/posts", { params }),
   reactPost: (postId, type) => API.post(`/posts/${postId}/react`, { type }),
   commentPost: (postId, text) => API.post(`/posts/${postId}/comment`, { text })
 };
 
-// ✅ Export individual functions for backward compatibility
+// ✅ Export individual functions
 export const createPost = (data) => API.post("/posts", data);
 export const getFeed = (params) => API.get("/posts", { params });
 export const reactPost = (postId, type) => API.post(`/posts/${postId}/react`, { type });
 export const commentPost = (postId, text) => API.post(`/posts/${postId}/comment`, { text });
+export const deleteComment = (postId, commentId) => API.delete(`/posts/${postId}/comment/${commentId}`);
 
 export default postsAPI;

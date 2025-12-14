@@ -2,6 +2,7 @@ import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import { Chat, Message } from "../models/Chat.js";
+import Post from "../models/Post.js"; // ✅ Added
 
 const setupSocket = (server) => {
   const io = new Server(server, {
@@ -72,7 +73,18 @@ const setupSocket = (server) => {
       }
     });
 
-    // Join user's personal room
+    // ✅ Join user to feed room for real-time posts
+    socket.join("feed_room");
+
+    // ✅ Join user to post rooms they're interested in
+    socket.on("join_post_room", (postId) => {
+      if (postId) {
+        socket.join(`post_${postId}`);
+        console.log(`User ${socket.userId} joined post room: ${postId}`);
+      }
+    });
+
+    // Join user to their personal room
     socket.join(socket.userId);
 
     socket.on("join_chat", (data) => {
@@ -97,6 +109,94 @@ const setupSocket = (server) => {
       console.log(`👋 User ${socket.userId} left chat ${chatId}`);
     });
 
+    // ✅ Handle new post creation
+    socket.on("new_post", async (postData) => {
+      try {
+        console.log("📢 New post event received:", postData._id);
+        
+        // ✅ Broadcast to all users in feed room (except sender)
+        socket.broadcast.to("feed_room").emit("post_created", {
+          type: "NEW_POST",
+          post: postData,
+          timestamp: new Date()
+        });
+        
+        console.log(`📢 Post ${postData._id} broadcasted to feed room`);
+      } catch (error) {
+        console.error("New post broadcast error:", error);
+      }
+    });
+
+    // ✅ Handle post like/unlike
+    socket.on("post_liked", async (data) => {
+      try {
+        const { postId, userId, reactionType, likesCount, isLiked } = data;
+        
+        // ✅ Broadcast to post room
+        socket.broadcast.to(`post_${postId}`).emit("post_like_updated", {
+          type: "LIKE_UPDATE",
+          postId,
+          userId,
+          reactionType,
+          likesCount,
+          isLiked,
+          timestamp: new Date()
+        });
+        
+        // ✅ Also update feed for real-time count
+        io.to("feed_room").emit("feed_updated", {
+          type: "POST_LIKED",
+          postId,
+          likesCount,
+          timestamp: new Date()
+        });
+        
+        console.log(`❤️ Like update for post ${postId}: ${reactionType}`);
+      } catch (error) {
+        console.error("Post like broadcast error:", error);
+      }
+    });
+
+    // ✅ Handle comment added
+    socket.on("new_comment", async (data) => {
+      try {
+        const { postId, comment, commentCount } = data;
+        
+        // ✅ Broadcast to post room
+        socket.broadcast.to(`post_${postId}`).emit("comment_added", {
+          type: "NEW_COMMENT",
+          postId,
+          comment,
+          commentCount,
+          timestamp: new Date()
+        });
+        
+        console.log(`💬 New comment on post ${postId}`);
+      } catch (error) {
+        console.error("New comment broadcast error:", error);
+      }
+    });
+
+    // ✅ Handle post deletion
+    socket.on("post_deleted", async (data) => {
+      try {
+        const { postId, deletedBy } = data;
+        
+        // ✅ Broadcast to feed room
+        io.to("feed_room").emit("post_removed", {
+          type: "POST_DELETED",
+          postId,
+          deletedBy,
+          timestamp: new Date()
+        });
+        
+        console.log(`🗑️ Post ${postId} deleted by ${deletedBy}`);
+      } catch (error) {
+        console.error("Post deletion broadcast error:", error);
+      }
+    });
+
+    // Handle typing events
     socket.on("typing_start", async (data) => {
       const { chatId } = data;
       
@@ -358,7 +458,7 @@ const setupSocket = (server) => {
           lastSeen: new Date()
         });
 
-        console.log(`📢 User ${socket.userId} status updated to offline`);
+        console.log(`📢 User ${socket.userId} status updated to offline");
 
       } catch (error) {
         console.error("❌ Disconnect error:", error);
@@ -371,12 +471,61 @@ const setupSocket = (server) => {
     });
   });
 
+  // ✅ Export function to emit events from controllers
+  const emitPostCreated = (post) => {
+    console.log("🚀 Emitting post_created event");
+    io.to("feed_room").emit("post_created", {
+      type: "NEW_POST",
+      post,
+      timestamp: new Date()
+    });
+  };
+
+  const emitPostLiked = (data) => {
+    const { postId, userId, reactionType, likesCount, isLiked } = data;
+    io.to(`post_${postId}`).emit("post_like_updated", {
+      type: "LIKE_UPDATE",
+      postId,
+      userId,
+      reactionType,
+      likesCount,
+      isLiked,
+      timestamp: new Date()
+    });
+  };
+
+  const emitCommentAdded = (data) => {
+    const { postId, comment, commentCount } = data;
+    io.to(`post_${postId}`).emit("comment_added", {
+      type: "NEW_COMMENT",
+      postId,
+      comment,
+      commentCount,
+      timestamp: new Date()
+    });
+  };
+
+  const emitPostDeleted = (postId, deletedBy) => {
+    io.to("feed_room").emit("post_removed", {
+      type: "POST_DELETED",
+      postId,
+      deletedBy,
+      timestamp: new Date()
+    });
+  };
+
   // Heartbeat to keep connections alive
   setInterval(() => {
     io.emit("ping", { timestamp: Date.now() });
   }, 30000);
 
-  return io;
+  return {
+    io,
+    emitPostCreated,
+    emitPostLiked,
+    emitCommentAdded,
+    emitPostDeleted
+  };
 };
 
 export default setupSocket;

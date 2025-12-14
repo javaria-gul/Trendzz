@@ -1,16 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AuthContext } from '../../context/AuthContext';
+import { SocketContext } from '../../context/SocketContext';
 
 const PostCard = ({ 
   post, 
   onLikeToggle, 
-  onAddComment, 
+  onAddComment,
+  onDeleteComment,
+  onDeletePost,
   currentUserId,
-  formatDate: propFormatDate 
+  formatDate: propFormatDate
 }) => {
   const navigate = useNavigate();
+  const { userData } = useContext(AuthContext);
+  const { socket } = useContext(SocketContext);
   
-  // ✅ ALL HOOKS MUST COME FIRST
   const [commentText, setCommentText] = useState('');
   const [showAllComments, setShowAllComments] = useState(false);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
@@ -19,55 +24,156 @@ const PostCard = ({
   const [comments, setComments] = useState([]);
   const [likeLoading, setLikeLoading] = useState(false);
   const [commentLoading, setCommentLoading] = useState(false);
+  const [showReactionEmojis, setShowReactionEmojis] = useState(false);
+  const [showCommentOptions, setShowCommentOptions] = useState(null);
+  const [showPostOptions, setShowPostOptions] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState(null);
+  const [deletingPost, setDeletingPost] = useState(false);
+  
+  // ✅ FIXED: Default outline heart (not filled)
+  const [selectedEmoji, setSelectedEmoji] = useState('🤍');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  
   const commentInputRef = useRef(null);
+  const postOptionsRef = useRef(null);
+  const emojiTimeoutRef = useRef(null);
 
-  // ✅ NOW SAFELY ACCESS POST PROPERTIES WITH DEFAULT VALUES
-  const postUser = post?.user || {};
-  const postMedia = post?.media || [];
-  const postContent = post?.content || '';
-  const postLocation = post?.location || '';
-  const postHashtags = post?.hashtags || [];
-  const postCreatedAt = post?.createdAt || '';
-  const postLikes = post?.likes || [];
-  const postComments = post?.comments || [];
+  // ✅ Emoji options for popup
+  const emojis = [
+    { emoji: '👍', label: 'Like', type: 'like', color: '#1877F2' },
+    { emoji: '❤️', label: 'Love', type: 'love', color: '#FF0000' },
+    { emoji: '😂', label: 'Haha', type: 'haha', color: '#FFD700' },
+    { emoji: '😢', label: 'Sad', type: 'sad', color: '#FFA500' },
+    { emoji: '😡', label: 'Angry', type: 'angry', color: '#FF4500' },
+    { emoji: '😮', label: 'Wow', type: 'wow', color: '#9370DB' }
+  ];
 
-  // ✅ USE EFFECTS MUST ALSO COME BEFORE CONDITIONAL RETURNS
+  // ✅ FIXED: useEffect for reactions - SIMPLIFIED
   useEffect(() => {
-    if (!post || typeof post !== 'object') return;
-    
-    // Set likes count
-    setLikesCount(postLikes.length);
-    
-    // Check if current user liked this post
-    if (currentUserId && postLikes.length > 0) {
-      const userLiked = postLikes.some(like => {
-        if (typeof like === 'object' && like._id) {
-          return like._id.toString() === currentUserId.toString();
+    if (!post || !currentUserId) return;
+
+    // 1. Check if user has reacted
+    let userLiked = false;
+    let userReactionType = null;
+
+    if (post.likes && Array.isArray(post.likes)) {
+      const userReaction = post.likes.find(like => {
+        if (!like || !like.user) return false;
+        
+        let likeUserId = '';
+        if (typeof like.user === 'object' && like.user._id) {
+          likeUserId = like.user._id;
+        } else if (typeof like.user === 'string') {
+          likeUserId = like.user;
         }
-        return like?.toString() === currentUserId.toString();
+        
+        return likeUserId && currentUserId && 
+               likeUserId.toString() === currentUserId.toString();
       });
-      setIsLiked(userLiked);
-    } else {
-      setIsLiked(false);
+
+      if (userReaction) {
+        userLiked = true;
+        userReactionType = userReaction.reaction || 'like';
+      }
     }
+
+    setIsLiked(userLiked);
+    setLikesCount(post.likes?.length || 0);
+
+    // 2. Set emoji based on reaction
+    if (userLiked) {
+      const emojiMap = {
+        'like': '👍',
+        'love': '❤️',
+        'haha': '😂',
+        'sad': '😢',
+        'angry': '😡',
+        'wow': '😮'
+      };
+      setSelectedEmoji(emojiMap[userReactionType] || '👍');
+    } else {
+      setSelectedEmoji('🤍'); // ✅ Outline heart when not liked
+    }
+
+    // 3. Comments
+    setComments(post?.comments || []);
+  }, [post, currentUserId]);
+
+  // ✅ Listen for real-time updates via socket
+  useEffect(() => {
+    if (!socket || !post?._id) return;
+
+    // Listen for like updates on this post
+    const handlePostLikeUpdated = (data) => {
+      if (data.postId === post._id && data.userId !== currentUserId) {
+        setIsLiked(data.isLiked);
+        setLikesCount(data.likesCount);
+        
+        if (data.isLiked) {
+          const emojiMap = {
+            'like': '👍',
+            'love': '❤️',
+            'haha': '😂',
+            'sad': '😢',
+            'angry': '😡',
+            'wow': '😮'
+          };
+          setSelectedEmoji(emojiMap[data.reactionType] || '👍');
+        } else {
+          setSelectedEmoji('🤍');
+        }
+      }
+    };
+
+    // Listen for new comments on this post
+    const handleCommentAdded = (data) => {
+      if (data.postId === post._id && data.comment.user._id !== currentUserId) {
+        setComments(prev => [...prev, data.comment]);
+      }
+    };
+
+    // Listen for comment deletion
+    const handleCommentDeleted = (data) => {
+      if (data.postId === post._id) {
+        setComments(prev => prev.filter(comment => comment._id !== data.commentId));
+      }
+    };
+
+    // Add event listeners
+    socket.on('post_like_updated', handlePostLikeUpdated);
+    socket.on('comment_added', handleCommentAdded);
+    socket.on('comment_deleted', handleCommentDeleted);
+
+    // Cleanup
+    return () => {
+      socket.off('post_like_updated', handlePostLikeUpdated);
+      socket.off('comment_added', handleCommentAdded);
+      socket.off('comment_deleted', handleCommentDeleted);
+    };
+  }, [socket, post?._id, currentUserId]);
+
+  // Cleanup timeout
+  useEffect(() => {
+    return () => {
+      if (emojiTimeoutRef.current) {
+        clearTimeout(emojiTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Close post options when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (postOptionsRef.current && !postOptionsRef.current.contains(event.target)) {
+        setShowPostOptions(false);
+      }
+    };
     
-    // Set comments
-    setComments(postComments);
-  }, [post, currentUserId, postLikes, postComments]);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
-  // ✅ NOW DO THE SAFETY CHECK FOR RENDERING
-  if (!post || typeof post !== 'object') {
-    console.error('PostCard: Invalid post data received', post);
-    return (
-      <div className="bg-white rounded-xl shadow-md border border-gray-200 p-4 mb-6">
-        <div className="text-center text-gray-500">
-          Post data is not available
-        </div>
-      </div>
-    );
-  }
-
-  // ✅ Format date helper
+  // Format date
   const formatDate = (dateString) => {
     if (!dateString) return 'Just now';
     
@@ -97,30 +203,159 @@ const PostCard = ({
     }
   };
 
-  // ✅ Handle like
-  const handleLikeClick = async () => {
-    if (!post?._id || likeLoading) return;
+  // ✅ FIXED: Handle emoji click from popup
+  const handleEmojiClick = async (emojiObj) => {
+    if (!post?._id || !currentUserId || likeLoading) return;
     
     setLikeLoading(true);
     
     try {
-      const newIsLiked = !isLiked;
-      setIsLiked(newIsLiked);
-      setLikesCount(prev => newIsLiked ? prev + 1 : prev - 1);
+      const newEmoji = emojiObj.emoji;
+      const reactionType = emojiObj.type;
       
-      if (onLikeToggle) {
-        await onLikeToggle(post._id);
+      // ✅ UPDATE: If already liked, just change reaction
+      if (isLiked) {
+        // Already liked - change reaction type
+        setSelectedEmoji(newEmoji);
+        // Likes count same rahega
+      } else {
+        // Not liked - new like
+        setIsLiked(true);
+        setLikesCount(prev => prev + 1);
+        setSelectedEmoji(newEmoji);
       }
+      
+      // Call API
+      if (onLikeToggle) {
+        await onLikeToggle(post._id, reactionType);
+      }
+      
     } catch (error) {
-      setIsLiked(!isLiked);
-      setLikesCount(prev => isLiked ? prev + 1 : prev - 1);
-      console.error('Like error:', error);
+      console.error('Emoji error:', error);
+      // Revert on error
+      const emojiMap = {
+        'like': '👍',
+        'love': '❤️',
+        'haha': '😂',
+        'sad': '😢',
+        'angry': '😡',
+        'wow': '😮'
+      };
+      setSelectedEmoji(isLiked ? emojiMap['love'] : '🤍');
     } finally {
       setLikeLoading(false);
+      setShowEmojiPicker(false);
     }
   };
 
-  // ✅ Handle comment
+  // ✅ FIXED: Handle main like button click (outline heart)
+  const handleLikeClick = async () => {
+    if (!post?._id || !currentUserId || likeLoading) return;
+    
+    setLikeLoading(true);
+    
+    try {
+      if (isLiked) {
+        // Unlike
+        if (onLikeToggle) {
+          await onLikeToggle(post._id, 'like');
+        }
+        setIsLiked(false);
+        setLikesCount(prev => Math.max(0, prev - 1));
+        setSelectedEmoji('🤍'); // ✅ Reset to outline heart
+      } else {
+        // Like with default (like reaction)
+        if (onLikeToggle) {
+          await onLikeToggle(post._id, 'like');
+        }
+        setIsLiked(true);
+        setLikesCount(prev => prev + 1);
+        setSelectedEmoji('👍'); // ✅ Default thumbs up for like
+      }
+    } catch (error) {
+      console.error('Like error:', error);
+      // Revert
+      setIsLiked(!isLiked);
+      setSelectedEmoji(isLiked ? '🤍' : '👍');
+    } finally {
+      setLikeLoading(false);
+      setShowEmojiPicker(false);
+    }
+  };
+
+  // ✅ Emoji hover handlers
+  const handleMouseEnterLike = () => {
+    if (emojiTimeoutRef.current) {
+      clearTimeout(emojiTimeoutRef.current);
+    }
+    setShowEmojiPicker(true);
+  };
+
+  const handleMouseLeaveLike = () => {
+    emojiTimeoutRef.current = setTimeout(() => {
+      setShowEmojiPicker(false);
+    }, 300);
+  };
+
+  // Handle emoji popup hover
+  const handleMouseEnterEmojiPopup = () => {
+    if (emojiTimeoutRef.current) {
+      clearTimeout(emojiTimeoutRef.current);
+    }
+    setShowEmojiPicker(true);
+  };
+
+  const handleMouseLeaveEmojiPopup = () => {
+    emojiTimeoutRef.current = setTimeout(() => {
+      setShowEmojiPicker(false);
+    }, 300);
+  };
+
+  // ✅ FIXED: Get current display - CRITICAL FIX
+  const getCurrentDisplay = () => {
+    if (isLiked) {
+      const emojiObj = emojis.find(e => e.emoji === selectedEmoji) || emojis[0]; // Default to thumbs up
+      return {
+        emoji: emojiObj.emoji,
+        label: emojiObj.label,
+        color: emojiObj.color
+      };
+    }
+    // ✅ When not liked, show outline heart
+    return {
+      emoji: '🤍', // Outline heart for unlike state
+      label: 'Like',
+      color: '#65676B' // Gray color
+    };
+  };
+
+  // Handle post delete
+  const handlePostDelete = async () => {
+    if (!post?._id || deletingPost) return;
+    
+    const confirmDelete = window.confirm('Are you sure you want to delete this post?');
+    if (!confirmDelete) {
+      setShowPostOptions(false);
+      return;
+    }
+    
+    setDeletingPost(true);
+    
+    try {
+      if (onDeletePost) {
+        await onDeletePost(post._id);
+      }
+      
+      setShowPostOptions(false);
+    } catch (error) {
+      console.error('Delete post error:', error);
+      alert('Failed to delete post');
+    } finally {
+      setDeletingPost(false);
+    }
+  };
+
+  // Handle comment submission
   const handleCommentSubmit = async (e) => {
     e.preventDefault();
     const trimmedText = commentText.trim();
@@ -130,23 +365,28 @@ const PostCard = ({
     setCommentLoading(true);
     
     try {
+      // Create temporary comment for immediate UI update
       const tempComment = {
         _id: `temp_${Date.now()}`,
         user: { 
           _id: currentUserId, 
-          username: 'You',
-          profilePicture: ''
+          username: userData?.username || 'You',
+          profilePicture: userData?.profilePicture || '',
+          avatar: userData?.avatar || ''
         },
         text: trimmedText,
         createdAt: new Date().toISOString()
       };
       
+      // Update UI immediately
       setComments(prev => [...prev, tempComment]);
       setCommentText('');
       
+      // Call API
       if (onAddComment) {
         const result = await onAddComment(post._id, trimmedText);
         
+        // Replace temp comment with real one from API response
         if (result?.comment) {
           setComments(prev => 
             prev.map(c => 
@@ -156,33 +396,31 @@ const PostCard = ({
         }
       }
     } catch (error) {
+      // Remove temp comment on error
       setComments(prev => prev.filter(c => !c._id?.includes('temp')));
       setCommentText(trimmedText);
       console.error('Comment error:', error);
+      alert('Failed to add comment');
     } finally {
       setCommentLoading(false);
     }
   };
 
-  // ✅ Focus comment input
+  // Focus comment input
   const focusCommentInput = () => {
     if (commentInputRef.current) {
       commentInputRef.current.focus();
-      commentInputRef.current.scrollIntoView({ 
-        behavior: 'smooth', 
-        block: 'center' 
-      });
     }
   };
 
-  // ✅ Navigate to user profile
+  // Navigate to user profile
   const navigateToUserProfile = (userId) => {
     if (userId) {
       navigate(`/user/${userId}`);
     }
   };
 
-  // ✅ Parse content with mentions
+  // Parse content with mentions
   const parseContentWithMentions = (content) => {
     if (!content) return null;
     
@@ -217,9 +455,9 @@ const PostCard = ({
     return parts.length > 0 ? parts : content;
   };
 
-  // ✅ Media navigation
+  // Media navigation
   const handleNextMedia = () => {
-    if (currentMediaIndex < postMedia.length - 1) {
+    if (currentMediaIndex < (post?.media?.length || 0) - 1) {
       setCurrentMediaIndex(prev => prev + 1);
     }
   };
@@ -230,15 +468,63 @@ const PostCard = ({
     }
   };
 
-  // ✅ Display comments with SAFE CHECK
-  const displayComments = showAllComments 
-    ? comments.filter(comment => comment && comment.text) // Filter out invalid comments
-    : comments.filter(comment => comment && comment.text).slice(-2);
+  // Comment options
+  const handleThreeDotsClick = (commentId, e) => {
+    e.stopPropagation();
+    setShowCommentOptions(showCommentOptions === commentId ? null : commentId);
+  };
 
-  const commentsCount = comments.filter(comment => comment && comment.text).length;
+  const handleDeleteComment = async (commentId, e) => {
+    e.stopPropagation();
+    
+    if (!commentId || deletingCommentId) return;
+    
+    const confirmDelete = window.confirm('Are you sure you want to delete this comment?');
+    if (!confirmDelete) {
+      setShowCommentOptions(null);
+      return;
+    }
+    
+    setDeletingCommentId(commentId);
+    
+    try {
+      if (onDeleteComment) {
+        await onDeleteComment(post._id, commentId);
+      }
+      
+      setComments(prev => prev.filter(comment => comment._id !== commentId));
+      setShowCommentOptions(null);
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+      alert('Failed to delete comment');
+    } finally {
+      setDeletingCommentId(null);
+    }
+  };
+
+  // Get post data
+  const postUser = post?.user || {};
+  const postMedia = post?.media || [];
+  const postContent = post?.content || '';
+  const postLocation = post?.location || '';
+  const postHashtags = post?.hashtags || [];
+  const postCreatedAt = post?.createdAt || '';
+
+  // Comments
+  const validComments = comments.filter(comment => comment && comment.text);
+  const displayComments = showAllComments 
+    ? validComments
+    : validComments.slice(-2);
+  const commentsCount = validComments.length;
+
+  // Check if current user is post owner
+  const isPostOwner = post.user?._id === currentUserId;
+
+  // ✅ FIXED: Current display
+  const currentDisplay = getCurrentDisplay();
 
   return (
-    <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden mb-6">
+    <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden mb-6 max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex justify-between items-center p-4 border-b border-gray-100">
         <div className="flex items-center space-x-3">
@@ -264,11 +550,56 @@ const PostCard = ({
             </span>
           </div>
         </div>
-        {postLocation && (
-          <div className="text-sm text-gray-600">
-            📍 {postLocation}
-          </div>
-        )}
+        
+        <div className="flex items-center gap-2">
+          {postLocation && (
+            <div className="text-sm text-gray-600 mr-2">
+              📍 {postLocation}
+            </div>
+          )}
+          
+          {isPostOwner && (
+            <div className="relative" ref={postOptionsRef}>
+              <button
+                onClick={() => setShowPostOptions(!showPostOptions)}
+                className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100 transition-colors"
+                title="More options"
+                disabled={deletingPost}
+              >
+                {deletingPost ? (
+                  <span className="w-5 h-5 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin block"></span>
+                ) : (
+                  <span className="text-lg">⋯</span>
+                )}
+              </button>
+              
+              {showPostOptions && (
+                <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-50 w-48">
+                  <button
+                    className="w-full px-4 py-3 text-left text-red-600 hover:bg-red-50 transition-colors text-sm flex items-center"
+                    onClick={handlePostDelete}
+                    disabled={deletingPost}
+                  >
+                    {deletingPost ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-red-300 border-t-red-600 rounded-full animate-spin mr-2"></span>
+                        Deleting...
+                      </>
+                    ) : (
+                      'Delete Post'
+                    )}
+                  </button>
+                  <button
+                    className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-50 transition-colors text-sm"
+                    onClick={() => setShowPostOptions(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Media */}
@@ -277,7 +608,7 @@ const PostCard = ({
           {postMedia[currentMediaIndex]?.type === 'video' ? (
             <video 
               controls 
-              className="w-full h-auto max-h-[500px] object-contain"
+              className="w-full h-auto max-h-[600px] object-contain"
               poster="/video-poster.png"
             >
               <source src={postMedia[currentMediaIndex]?.url} type="video/mp4" />
@@ -286,7 +617,7 @@ const PostCard = ({
             <img 
               src={postMedia[currentMediaIndex]?.url} 
               alt={`Post by ${postUser.username || 'user'}`}
-              className="w-full h-auto max-h-[500px] object-contain"
+              className="w-full h-auto max-h-[600px] object-contain"
               onError={(e) => {
                 e.target.src = '/image-placeholder.png';
                 e.target.onerror = null;
@@ -329,43 +660,88 @@ const PostCard = ({
         </div>
       )}
 
-      {/* Actions */}
+      {/* ✅ FIXED: Actions Section */}
       <div className="p-4 border-b border-gray-100">
         <div className="flex items-center space-x-4">
-          <button 
-            onClick={handleLikeClick}
-            disabled={likeLoading}
-            className={`flex items-center space-x-2 transition-colors ${likeLoading ? 'opacity-50 cursor-wait' : 'cursor-pointer'} ${isLiked ? 'text-red-500' : 'text-gray-700 hover:text-red-400'}`}
+          {/* Like Button with Emoji Popup */}
+          <div 
+            className="relative"
+            onMouseEnter={handleMouseEnterLike}
+            onMouseLeave={handleMouseLeaveLike}
           >
-            {likeLoading ? (
-              <span className="w-5 h-5 border-2 border-gray-300 border-t-red-500 rounded-full animate-spin"></span>
-            ) : isLiked ? (
-              '❤️'
-            ) : (
-              '🤍'
+            <button 
+              onClick={handleLikeClick}
+              disabled={likeLoading}
+              className={`flex items-center space-x-2 transition-colors min-w-[80px] ${
+                likeLoading ? 'opacity-50 cursor-wait' : 'cursor-pointer'
+              } ${isLiked ? 'font-semibold' : 'text-gray-700 hover:text-red-500'}`}
+              style={{
+                color: currentDisplay.color
+              }}
+            >
+              {likeLoading ? (
+                <span className="w-5 h-5 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></span>
+              ) : (
+                <>
+                  <span className="text-xl">{currentDisplay.emoji}</span>
+                  <span className="text-sm">{currentDisplay.label}</span>
+                </>
+              )}
+            </button>
+
+            {/* ✅ Emoji Picker Popup */}
+            {showEmojiPicker && (
+              <div 
+                className="absolute bottom-full left-0 mb-2 bg-white rounded-full shadow-xl border border-gray-200 p-2 flex space-x-1 z-50"
+                onMouseEnter={handleMouseEnterEmojiPopup}
+                onMouseLeave={handleMouseLeaveEmojiPopup}
+                style={{
+                  animation: 'fadeInUp 0.2s ease-out',
+                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)'
+                }}
+              >
+                {emojis.map((emojiObj, index) => (
+                  <button
+                    key={index}
+                    className={`text-2xl hover:scale-125 transition-transform cursor-pointer active:scale-95 p-1 rounded-full ${
+                      selectedEmoji === emojiObj.emoji && isLiked ? 'scale-125 ring-2 ring-gray-300 bg-gray-100' : ''
+                    }`}
+                    onClick={() => handleEmojiClick(emojiObj)}
+                    title={emojiObj.label}
+                    style={{
+                      color: emojiObj.color
+                    }}
+                  >
+                    {emojiObj.emoji}
+                  </button>
+                ))}
+              </div>
             )}
-            <span>{isLiked ? 'Liked' : 'Like'}</span>
-          </button>
+          </div>
           
+          {/* Comment Button */}
           <button 
             className="flex items-center space-x-2 text-gray-700 hover:text-blue-500 transition-colors cursor-pointer"
             onClick={focusCommentInput}
           >
-            💬
-            <span>Comment</span>
+            <span className="text-xl">💬</span>
+            <span className="text-sm">Comment</span>
           </button>
         </div>
         
+        {/* Show likes count */}
         <div className="mt-2">
-          <span className="font-semibold text-gray-800">
-            {likesCount} {likesCount === 1 ? 'like' : 'likes'}
-          </span>
+          {likesCount > 0 && (
+            <div className="text-sm text-gray-700 font-medium">
+              {likesCount} {likesCount === 1 ? 'like' : 'likes'}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Content */}
       <div className="p-4 border-b border-gray-100">
-        <div className="text-gray-800">
+        <div className="text-gray-800 text-base">
           <span 
             className="font-semibold text-gray-800 hover:text-blue-600 cursor-pointer transition-colors"
             onClick={() => navigateToUserProfile(postUser._id)}
@@ -373,17 +749,18 @@ const PostCard = ({
             @{postUser.username || 'user'}
           </span>
           {' '}
-          <span>
+          <span className="leading-relaxed">
             {parseContentWithMentions(postContent)}
           </span>
         </div>
         
         {postHashtags.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-2">
+          <div className="flex flex-wrap gap-2 mt-3">
             {postHashtags.map((tag, index) => (
               <span 
                 key={index} 
-                className="text-blue-600 text-sm hover:text-blue-800 cursor-pointer"
+                className="text-blue-600 hover:text-blue-800 cursor-pointer font-medium"
+                onClick={() => navigate(`/search?q=${tag.replace('#', '')}`)}
               >
                 #{tag.replace('#', '')}
               </span>
@@ -392,23 +769,23 @@ const PostCard = ({
         )}
       </div>
 
-      {/* Comments - WITH SAFE MAPPING */}
+      {/* Comments */}
       <div className="p-4">
         {commentsCount > 0 && (
           <>
             <div className="space-y-3 mb-4">
               {displayComments.map((comment, index) => {
-                // ✅ SAFETY CHECK FOR EACH COMMENT
                 if (!comment || !comment.text) return null;
                 
                 const commentUser = comment?.user || {};
                 const commentText = comment.text;
                 const commentId = comment?._id || `comment-${index}`;
+                const isCommentOwner = commentUser._id === currentUserId;
                 
                 return (
                   <div 
                     key={commentId} 
-                    className="flex items-start space-x-3 hover:bg-gray-50 p-2 rounded-lg transition-colors"
+                    className="flex items-start space-x-3 hover:bg-gray-50 p-2 rounded-lg transition-colors group relative"
                     onClick={focusCommentInput}
                   >
                     <img 
@@ -425,10 +802,10 @@ const PostCard = ({
                       }}
                     />
                     
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-baseline">
                         <span 
-                          className="font-semibold text-gray-800 mr-2 hover:text-blue-600 cursor-pointer transition-colors"
+                          className="font-semibold text-gray-800 mr-2 hover:text-blue-600 cursor-pointer transition-colors truncate"
                           onClick={(e) => {
                             e.stopPropagation();
                             navigateToUserProfile(commentUser._id);
@@ -436,15 +813,56 @@ const PostCard = ({
                         >
                           @{commentUser.username || 'user'}
                         </span>
-                        <span className="text-gray-700">{commentText}</span>
+                        <span className="text-gray-800 break-words">
+                          {commentText}
+                        </span>
                       </div>
                       
                       {comment.createdAt && (
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-gray-500 mt-1 block">
                           {formatDate(comment.createdAt)}
                         </span>
                       )}
                     </div>
+
+                    {isCommentOwner && (
+                      <button 
+                        className="opacity-0 group-hover:opacity-100 transition-opacity ml-2 text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100"
+                        onClick={(e) => handleThreeDotsClick(commentId, e)}
+                        title="Comment options"
+                      >
+                        <span className="text-lg">⋯</span>
+                      </button>
+                    )}
+
+                    {showCommentOptions === commentId && (
+                      <div 
+                        className="absolute right-0 top-8 bg-white rounded-lg shadow-lg border border-gray-200 z-50 w-40"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          className="w-full px-4 py-3 text-left text-red-600 hover:bg-red-50 transition-colors text-sm"
+                          onClick={(e) => handleDeleteComment(commentId, e)}
+                          disabled={deletingCommentId === commentId}
+                        >
+                          {deletingCommentId === commentId ? (
+                            <span className="flex items-center">
+                              <span className="w-4 h-4 border-2 border-red-300 border-t-red-600 rounded-full animate-spin mr-2"></span>
+                              Deleting...
+                            </span>
+                          ) : 'Delete Comment'}
+                        </button>
+                        <button
+                          className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-50 transition-colors text-sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowCommentOptions(null);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -464,26 +882,24 @@ const PostCard = ({
           </>
         )}
 
-        {/* Comment Input */}
-        <form onSubmit={handleCommentSubmit} className="flex gap-2">
+        <form onSubmit={handleCommentSubmit} className="flex gap-2 mt-2">
           <input
             ref={commentInputRef}
             type="text"
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
             placeholder="Add a comment..."
-            className="flex-1 border border-gray-300 rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+            className="flex-1 border border-gray-300 rounded-full px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm text-gray-800 placeholder-gray-500"
             disabled={commentLoading}
           />
           <button 
             type="submit" 
             disabled={!commentText.trim() || commentLoading}
-            className={`px-4 py-2 rounded-full font-semibold transition-all ${commentLoading ? 'bg-blue-300 cursor-wait' : !commentText.trim() ? 'bg-blue-200 text-blue-400 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'}`}
+            className={`px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium whitespace-nowrap flex items-center justify-center text-sm ${commentLoading ? 'opacity-70 cursor-wait' : !commentText.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             {commentLoading ? (
-              <span className="flex items-center">
-                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
-                Posting...
+              <span className="flex items-center justify-center">
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
               </span>
             ) : 'Post'}
           </button>
