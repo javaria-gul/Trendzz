@@ -1,7 +1,8 @@
+// src/components/Home/CreatePostModal.jsx - COMPLETE FIXED VERSION
 import React, { useState, useRef, useContext } from 'react';
 import { postsAPI } from '../../services/api';
 import { AuthContext } from '../../context/AuthContext';
-import { useNavigate } from 'react-router-dom'; // ADD THIS
+import { useNavigate } from 'react-router-dom';
 
 const CreatePostModal = ({ onClose, onPostCreated }) => {
   const [content, setContent] = useState('');
@@ -14,18 +15,16 @@ const CreatePostModal = ({ onClose, onPostCreated }) => {
   const [error, setError] = useState('');
   const fileInputRef = useRef(null);
   const { userData } = useContext(AuthContext);
-  const navigate = useNavigate(); // ADD THIS
+  const navigate = useNavigate();
 
   const handleFileChange = (e) => {
     const selectedFiles = Array.from(e.target.files);
     
-    // Validate file count
     if (files.length + selectedFiles.length > 10) {
       alert('Maximum 10 files allowed');
       return;
     }
 
-    // Validate file types and sizes
     const validFiles = [];
     selectedFiles.forEach(file => {
       const isImage = file.type.startsWith('image/');
@@ -45,7 +44,6 @@ const CreatePostModal = ({ onClose, onPostCreated }) => {
       validFiles.push(file);
     });
 
-    // Create previews
     const newPreviews = validFiles.map(file => ({
       url: URL.createObjectURL(file),
       type: file.type.startsWith('video/') ? 'video' : 'image',
@@ -69,23 +67,6 @@ const CreatePostModal = ({ onClose, onPostCreated }) => {
     setPreviews(newPreviews);
   };
 
-  
-const testBackend = async () => {
-  try {
-    console.log('🔍 Testing backend connection...');
-    const response = await fetch('http://localhost:5000/api/posts/test');
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const data = await response.json();
-    console.log('✅ Backend test response:', data);
-    return data.success === true;
-  } catch (error) {
-    console.error('❌ Backend test failed:', error);
-    return false;
-  }
-};
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -94,7 +75,6 @@ const testBackend = async () => {
     console.log('📁 Files:', files.length);
     console.log('📝 Content:', content);
     
-    // Check if user is logged in
     const token = localStorage.getItem("trendzz_token");
     if (!token) {
       setError('Please login first');
@@ -111,75 +91,63 @@ const testBackend = async () => {
       return;
     }
 
-    // Create FormData
     const formData = new FormData();
     formData.append('content', content);
     if (location) formData.append('location', location);
     if (hashtags) formData.append('hashtags', hashtags);
     
-    // Add files - IMPORTANT: use 'files' (plural) as field name
     files.forEach(file => {
       console.log('➕ Adding file:', file.name, file.type, file.size);
-      formData.append('files', file); // 'files' not 'file'
+      formData.append('files', file);
     });
 
-    // Debug formData
-    console.log('📦 FormData contents:');
-    for (let [key, value] of formData.entries()) {
-      console.log(`${key}:`, key === 'files' ? `File (${value.name})` : value);
-    }
+    console.log('📤 Sending request to /api/posts...');
 
-// CreatePostModal.jsx - handleSubmit function
+    try {
+      setIsUploading(true);
+      setUploadProgress(0);
+      
+      const response = await postsAPI.createPost(formData, (progressEvent) => {
+        const progress = Math.round(
+          (progressEvent.loaded * 100) / (progressEvent.total || 1)
+        );
+        console.log(`📊 Upload progress: ${progress}%`);
+        setUploadProgress(progress);
+      });
 
-// CHANGE THIS PART:
-console.log('📤 Sending request to /api/posts...');
-
-// ✅ FIXED: Use postsAPI.createPost with error handling
-try {
-  const response = await postsAPI.createPost(formData, (progressEvent) => {
-    const progress = Math.round(
-      (progressEvent.loaded * 100) / (progressEvent.total || 1)
-    );
-    console.log(`📊 Upload progress: ${progress}%`);
-    setUploadProgress(progress);
-  });
-
-  console.log('✅ Response from createPost:', response);
-  
-  // ✅ FIXED: response is already the data object
-  if (response && response.success) {
-    console.log('🎉 Post created successfully:', response.post);
-    alert('Post created successfully!');
-    if (onPostCreated) onPostCreated(response.post);
-    if (onClose) onClose();
-  } else {
-    console.error('❌ Server error:', response?.message);
-    setError(response?.message || 'Failed to create post');
-    alert(response?.message || 'Failed to create post');
-  }
-} catch (error) {
-  console.error('❌ Catch block error:', error);
-  
-  // ✅ FIXED: Error format handling
-  let errorMessage = 'Failed to create post';
-  if (error.message) {
-    errorMessage = error.message;
-  } else if (error.response?.data?.message) {
-    errorMessage = error.response.data.message;
-  } else if (typeof error === 'object' && error.message) {
-    errorMessage = error.message;
-  }
-  
-  setError(errorMessage);
-  alert(errorMessage);
-  
-  // Redirect to login if token invalid
-  if (errorMessage.includes('token') || errorMessage.includes('auth') || 
-      errorMessage.includes('401')) {
-    localStorage.removeItem("trendzz_token");
-    navigate('/login');
-  }
-}finally {
+      console.log('✅ Response from createPost:', response);
+      
+      if (response && response.success) {
+        console.log('🎉 Post created successfully:', response.post);
+        alert('Post created successfully!');
+        if (onPostCreated) onPostCreated(response.post);
+        if (onClose) onClose();
+      } else {
+        console.error('❌ Server error:', response?.message);
+        setError(response?.message || 'Failed to create post');
+        alert(response?.message || 'Failed to create post');
+      }
+    } catch (error) {
+      console.error('❌ Catch block error:', error);
+      
+      let errorMessage = 'Failed to create post';
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (typeof error === 'object' && error.message) {
+        errorMessage = error.message;
+      }
+      
+      setError(errorMessage);
+      alert(errorMessage);
+      
+      if (errorMessage.includes('token') || errorMessage.includes('auth') || 
+          errorMessage.includes('401')) {
+        localStorage.removeItem("trendzz_token");
+        navigate('/login');
+      }
+    } finally {
       setIsUploading(false);
     }
   };
@@ -239,14 +207,14 @@ try {
 
         {/* Content Area */}
         <form onSubmit={handleSubmit} className="overflow-y-auto max-h-[60vh]">
-          {/* Text Area */}
+          {/* Text Area - ✅ FIXED TEXT COLOR */}
           <div className="p-4">
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
               onKeyUp={extractHashtags}
               placeholder="What's on your mind?"
-              className="w-full border-none focus:outline-none text-lg resize-none min-h-[120px] disabled:bg-gray-100"
+              className="w-full border-none focus:outline-none text-lg resize-none min-h-[120px] disabled:bg-gray-100 text-gray-800 placeholder-gray-500" // ✅ text-gray-800 added
               rows="4"
               disabled={isUploading}
             />

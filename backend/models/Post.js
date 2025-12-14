@@ -1,5 +1,22 @@
-// models/Post.js - CHANGE TO ES MODULE
+// backend/models/Post.js - COMPLETE FIXED VERSION
 import mongoose from 'mongoose';
+
+const reactionSchema = new mongoose.Schema({
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  reaction: {
+    type: String,
+    enum: ['like', 'love', 'haha', 'sad', 'angry', 'wow'],
+    default: 'like'
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+});
 
 const commentSchema = new mongoose.Schema({
   user: {
@@ -56,10 +73,7 @@ const postSchema = new mongoose.Schema({
     trim: true,
     default: ''
   },
-  likes: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
+  likes: [reactionSchema], // ✅ FIXED: Array of reaction objects
   comments: [commentSchema],
   createdAt: {
     type: Date,
@@ -67,10 +81,10 @@ const postSchema = new mongoose.Schema({
   }
 });
 
-// Indexes for better query performance
+// Indexes
 postSchema.index({ user: 1, createdAt: -1 });
 postSchema.index({ hashtags: 1 });
 postSchema.index({ createdAt: -1 });
 
 const Post = mongoose.model('Post', postSchema);
-export default Post; // ✅ CHANGE TO ES MODULE EXPORT
+export default Post;

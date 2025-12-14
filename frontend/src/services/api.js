@@ -1,24 +1,22 @@
-// src/services/api.js (FIXED VERSION)
+// src/services/api.js - COMPLETE FIXED VERSION
 import axios from "axios";
 
-const BASE_URL = "http://localhost:5000/api"; // ✅ Correct
+const BASE_URL = "http://localhost:5000/api";
 
 const API = axios.create({
-  baseURL: `${BASE_URL}`,  // ✅ Ye banega: "http://localhost:5000/api"
-  timeout: 10000,
+  baseURL: BASE_URL,
+  timeout: 30000, // Increased timeout
 });
 
-// ✅ FIXED: Request interceptor
+// ✅ Request interceptor
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem("trendzz_token");
   
-  // Always add Authorization header if token exists
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   
-  // Don't overwrite Content-Type if it's multipart/form-data
-  if (!config.headers['Content-Type']) {
+  if (!config.headers['Content-Type'] && !config.headers['content-type']) {
     config.headers['Content-Type'] = 'application/json';
   }
   
@@ -35,7 +33,7 @@ API.interceptors.request.use((config) => {
   return Promise.reject(error);
 });
 
-// ✅ FIXED: Response interceptor - Return consistent format
+// ✅ Response interceptor
 API.interceptors.response.use(
   (response) => {
     console.log('✅ API Response:', {
@@ -44,7 +42,7 @@ API.interceptors.response.use(
       data: response.data
     });
     
-    // ✅ RETURN CONSISTENT FORMAT
+    // Return consistent format
     return {
       success: response.data?.success !== false,
       data: response.data,
@@ -62,10 +60,10 @@ API.interceptors.response.use(
     
     if (error.response?.status === 401) {
       localStorage.removeItem("trendzz_token");
+      localStorage.removeItem("trendzz_user");
       window.location.href = "/login";
     }
     
-    // ✅ Return consistent error format
     return Promise.reject({
       success: false,
       message: error.response?.data?.message || error.message || 'Network error',
@@ -75,14 +73,21 @@ API.interceptors.response.use(
   }
 );
 
-// ✅ POSTS API - FIXED
+// ✅ POSTS API - COMPLETE FIXED WITH BOTH FUNCTIONS
 export const postsAPI = {
-  // Create post with media - FIXED DOUBLE /API
+  // ✅ 1. getPosts - FOR HomeFeed.jsx (required for error fix)
+  getPosts: (page = 1, limit = 100) => 
+    API.get("/posts", { params: { page, limit } }),
+  
+  // ✅ 2. getAllPosts - For other components
+  getAllPosts: (page = 1, limit = 100) => 
+    API.get("/posts", { params: { page, limit } }),
+  
+  // ✅ 3. Create post with media
   createPost: async (formData, onUploadProgress) => {
     console.log('📤 Creating post with formData:', {
       hasFiles: formData.getAll('files').length,
-      content: formData.get('content'),
-      location: formData.get('location')
+      content: formData.get('content')
     });
     
     try {
@@ -91,13 +96,13 @@ export const postsAPI = {
         throw new Error('No authentication token found');
       }
       
-      // ✅ FIXED: Remove extra /api (was: ${BASE_URL}/api/posts)
       const response = await axios.post(`${BASE_URL}/posts`, formData, {
         headers: { 
           'Content-Type': 'multipart/form-data',
           'Authorization': `Bearer ${token}`
         },
-        onUploadProgress
+        onUploadProgress,
+        timeout: 60000
       });
       
       console.log('✅ Post created response:', response.data);
@@ -109,25 +114,34 @@ export const postsAPI = {
     }
   },
   
-  // Get all posts
-  getPosts: (page = 1, limit = 10) => 
-    API.get('/posts', { params: { page, limit } }),
+  // ✅ 4. LIKE POST - FIXED with reaction type
+  likePost: (postId, reactionType = 'like') => 
+    API.post(`/posts/${postId}/like`, { reactionType }),
   
-  // Get user's posts
-  getUserPosts: (userId, page = 1, limit = 10) => 
-    API.get(`/posts/user/${userId}`, { params: { page, limit } }),
-  
-  // Toggle like
-  likePost: (postId) => 
-   API.post(`/posts/${postId}/like`),
-  
-  // Add comment
+  // ✅ 5. Add comment
   addComment: (postId, text) => 
     API.post('/posts/comment', { postId, text }),
   
-  // Delete post
+  // ✅ 6. DELETE POST - FIXED
   deletePost: (postId) => 
     API.delete(`/posts/${postId}`),
+  
+  // ✅ 7. DELETE COMMENT - CRITICAL ADDITION
+  deleteComment: (postId, commentId) => 
+    API.delete(`/posts/${postId}/comment/${commentId}`),
+  
+  // ✅ 8. Get user posts
+  getUserPosts: (userId, page = 1, limit = 10) => 
+    API.get(`/posts/user/${userId}`, { params: { page, limit } }),
+  
+  // ✅ 9. For backward compatibility
+  getFeed: (params) => API.get("/posts", { params }),
+  
+  // ✅ 10. reactPost - For reactions
+  reactPost: (postId, type) => API.post(`/posts/${postId}/react`, { type }),
+  
+  // ✅ 11. commentPost - Alternative comment function
+  commentPost: (postId, text) => API.post(`/posts/${postId}/comment`, { text })
 };
 
 // ✅ AUTH API
@@ -137,5 +151,13 @@ export const authAPI = {
   testConnection: () => API.get('/auth/test-connection'),
   logout: () => API.post('/auth/logout'),
 };
+
+// ✅ Export individual functions for backward compatibility
+export const createPost = (data) => API.post("/posts", data);
+export const getFeed = (params) => API.get("/posts", { params });
+export const reactPost = (postId, type) => API.post(`/posts/${postId}/react`, { type });
+export const commentPost = (postId, text) => API.post(`/posts/${postId}/comment`, { text });
+export const deleteComment = (postId, commentId) => API.delete(`/posts/${postId}/comment/${commentId}`);
+export const getPosts = (page = 1, limit = 100) => API.get("/posts", { params: { page, limit } }); // ✅ Added
 
 export default API;

@@ -1,57 +1,43 @@
-// postRoutes.js - SIRF YEH CODE RAKHO:
-
+// backend/routes/postRoutes.js - COMPLETE FIXED VERSION
 import express from "express";
 import { 
   createPost, 
   getFeed,  
-  addComment,
   deletePost,
   getUserPosts,
   toggleLike,
-  addCommentNew ,
-   debugCheckPosts  
+  addComment,
+  deleteComment,  
+  debugCheckPosts  
 } from "../controllers/postController.js";
+import requireAuth from "../middleware/authMiddleware.js"; // ✅ CHANGE: authMiddleware → requireAuth
 import upload from "../middleware/uploadMiddleware.js";
-import auth from "../middleware/authMiddleware.js";
+
 
 const router = express.Router();
 
-// 1. POST /api/posts - Create post with media
-router.post("/", 
-  auth, 
-  upload.array('files', 10), 
-  createPost
-);
+// ✅ 1. Create post with media
+router.post("/", requireAuth, upload.array('files', 10), createPost);
 
-// 2. GET /api/posts - Get all posts
-router.get("/", getFeed);
+// ✅ 2. Get all posts (feed)
+router.get("/", requireAuth, getFeed);
 
-// 3. POST /api/posts/like - Toggle like
-router.post("/:postId/like", auth, toggleLike);
+// ✅ 3. Add comment (CRITICAL FIX) - FIXED ROUTE
+router.post("/comment", requireAuth, addComment);
 
-// 4. POST /api/posts/comment - Add comment
-router.post("/comment", auth, addCommentNew);
+// ✅ 4. Toggle like with reaction
+router.post("/:postId/like", requireAuth, toggleLike);
 
-// 5. DELETE /api/posts/:id - Delete post
-router.delete("/:id", auth, deletePost);
+// ✅ 5. Delete comment
+router.delete("/:postId/comment/:commentId", requireAuth, deleteComment);
 
-// 6. GET /api/posts/user/:userId - Get user posts
-router.get("/user/:userId", getUserPosts);
+// ✅ 6. Delete post
+router.delete("/:id", requireAuth, deletePost);
 
-// FOR BACKWARD COMPATIBILITY
+// ✅ 7. Get user posts
+router.get("/user/:userId", requireAuth, getUserPosts);
 
-router.post("/:id/comment", auth, addComment);
-// postRoutes.js mein
-router.get("/debug/check", debugCheckPosts);
-
-// ✅ Simple test route (ONLY THIS ADDITION)
-router.get("/test", (req, res) => {
-  console.log("✅ /api/posts/test called");
-  res.json({ 
-    success: true, 
-    message: "Posts API is working",
-    timestamp: new Date().toISOString()
-  });
-});
+// ✅ 8. Debug route
+router.get("/debug/check", requireAuth, debugCheckPosts);
 
 export default router;
