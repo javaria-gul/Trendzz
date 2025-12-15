@@ -39,9 +39,26 @@ const SidebarRight = () => {
     }
   };
 
-  const handleProfileClick = (userId) => {
-    navigate(`/profile/${userId}`);
-  };
+// Handle profile click - UPDATED ROUTE
+const handleProfileClick = (user) => {
+  // Debug
+  console.log("🔄 Profile click triggered");
+  console.log("📋 User data:", user);
+  
+  // Get user ID
+  const userId = user._id || user.id || user.userId;
+  
+  if (!userId) {
+    console.error("❌ No user ID found!");
+    console.error("User object:", user);
+    return;
+  }
+  
+  console.log(`✅ Navigating to: /user/${userId}`);
+  
+  // NAVIGATE TO /user/:userId (NOT /profile/:userId)
+  navigate(`/user/${userId}`);
+};
 
   useEffect(() => {
     const fetchRecommendations = async () => {
@@ -191,27 +208,29 @@ const SidebarRight = () => {
                       <div className="p-1.5">
                         <div className="flex items-start gap-1.5">
                           {/* Avatar - Smaller */}
-                          <div 
-                            className="cursor-pointer flex-shrink-0"
-                            onClick={() => handleProfileClick(user._id)}
-                          >
-                            <div className="relative">
-                              <div className="w-8 h-8 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold overflow-hidden">
-                                {user.avatar ? (
-                                  <img 
-                                    src={user.avatar} 
-                                    alt={user.name}
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  user.name?.charAt(0) || 'U'
-                                )}
-                              </div>
-                              <div className="absolute -bottom-0.5 -right-0.5 p-0.5 bg-white rounded-full border border-gray-200">
-                                {getUserRoleIcon(user.role)}
-                              </div>
-                            </div>
-                          </div>
+{/* Avatar - Clickable */}
+<div className="relative flex-shrink-0">
+  {/* Clickable Circle */}
+  <div 
+    className="w-8 h-8 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold overflow-hidden cursor-pointer border-2 border-white hover:border-blue-300 transition-all hover:scale-105"
+    onClick={() => handleProfileClick(user)}
+  >
+    {user.avatar ? (
+      <img 
+        src={user.avatar} 
+        alt={user.name}
+        className="w-full h-full object-cover"
+      />
+    ) : (
+      user.name?.charAt(0) || 'U'
+    )}
+  </div>
+  
+  {/* Role Icon */}
+  <div className="absolute -bottom-0.5 -right-0.5 p-0.5 bg-white rounded-full border border-gray-200">
+    {getUserRoleIcon(user.role)}
+  </div>
+</div>
                           
                           {/* User Info - COMPACT */}
                           <div 
