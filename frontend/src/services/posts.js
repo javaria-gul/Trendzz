@@ -8,10 +8,8 @@ export const postsAPI = {
   
   // Create post with media (multipart/form-data)
   createPost: (formData, onUploadProgress) => 
+    // Do not set Content-Type header manually so browser/axios can set proper boundary
     API.post('/posts', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      },
       onUploadProgress
     }),
   

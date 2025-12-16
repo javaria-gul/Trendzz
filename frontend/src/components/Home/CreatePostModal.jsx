@@ -3,7 +3,7 @@ import { postsAPI } from '../../services/api';
 import { AuthContext } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom'; // ADD THIS
 
-const CreatePostModal = ({ onClose, onPostCreated }) => {
+const CreatePostModal = ({ onClose, onPostCreated, postedOn = null }) => {
   const [content, setContent] = useState('');
   const [files, setFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
@@ -123,6 +123,12 @@ const testBackend = async () => {
       formData.append('files', file); // 'files' not 'file'
     });
 
+    // If this post is being created on another user's profile, include postedOn
+    if (postedOn) {
+      console.log('📌 Posting on profile:', postedOn);
+      formData.append('postedOn', postedOn);
+    }
+
     // Debug formData
     console.log('📦 FormData contents:');
     for (let [key, value] of formData.entries()) {
@@ -134,8 +140,9 @@ const testBackend = async () => {
 // CHANGE THIS PART:
 console.log('📤 Sending request to /api/posts...');
 
-// ✅ FIXED: Use postsAPI.createPost with error handling
+// ✅ FIXED: Use postsAPI.createPost with error handling and proper axios response handling
 try {
+  setIsUploading(true);
   const response = await postsAPI.createPost(formData, (progressEvent) => {
     const progress = Math.round(
       (progressEvent.loaded * 100) / (progressEvent.total || 1)
@@ -144,44 +151,44 @@ try {
     setUploadProgress(progress);
   });
 
-  console.log('✅ Response from createPost:', response);
-  
-  // ✅ FIXED: response is already the data object
-  if (response && response.success) {
-    console.log('🎉 Post created successfully:', response.post);
+  console.log('✅ Raw response from createPost:', response);
+
+  const data = response?.data || response;
+
+  if (data && (data.success === true || data.success === undefined)) {
+    const createdPost = data.post || data.data || data;
+    console.log('🎉 Post created successfully:', createdPost);
     alert('Post created successfully!');
-    if (onPostCreated) onPostCreated(response.post);
+    if (onPostCreated) onPostCreated(createdPost);
     if (onClose) onClose();
   } else {
-    console.error('❌ Server error:', response?.message);
-    setError(response?.message || 'Failed to create post');
-    alert(response?.message || 'Failed to create post');
+    const serverMessage = data?.message || data?.error || 'Failed to create post';
+    console.error('❌ Server error:', serverMessage);
+    setError(serverMessage);
+    alert(serverMessage);
   }
 } catch (error) {
   console.error('❌ Catch block error:', error);
-  
-  // ✅ FIXED: Error format handling
+
   let errorMessage = 'Failed to create post';
-  if (error.message) {
-    errorMessage = error.message;
-  } else if (error.response?.data?.message) {
+  if (error.response?.data?.message) {
     errorMessage = error.response.data.message;
-  } else if (typeof error === 'object' && error.message) {
+  } else if (error.message) {
     errorMessage = error.message;
+  } else if (typeof error === 'string') {
+    errorMessage = error;
   }
-  
+
   setError(errorMessage);
   alert(errorMessage);
-  
-  // Redirect to login if token invalid
-  if (errorMessage.includes('token') || errorMessage.includes('auth') || 
-      errorMessage.includes('401')) {
-    localStorage.removeItem("trendzz_token");
+
+  if (errorMessage.toLowerCase().includes('token') || error.response?.status === 401) {
+    localStorage.removeItem('trendzz_token');
     navigate('/login');
   }
-}finally {
-      setIsUploading(false);
-    }
+} finally {
+  setIsUploading(false);
+}
   };
 
   const extractHashtags = () => {

@@ -1,71 +1,67 @@
-// backend/middleware/authMiddleware.js
-import jwt from "jsonwebtoken";
-import User from "../models/User.js";
+// ...existing code...
+import jwt from 'jsonwebtoken';
+import User from '../models/User.js';
 
-export const requireAuth = async (req, res, next) => {
+export const authMiddleware = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization || req.headers.Authorization;
+    console.log('🔒 Auth middleware checking...');
     
-    console.log("🔐 Auth Middleware - Checking token...");
+    // Get token from header
+    const token = req.header('Authorization')?.replace('Bearer ', '');
     
-    if (!authHeader?.startsWith("Bearer ")) {
-      console.log("❌ No Bearer token found");
-      return res.status(401).json({ 
-        success: false,  // ✅ Master Prompt format
-        message: "No authentication token, access denied" 
+    if (!token) {
+      console.log('❌ No token provided');
+      return res.status(401).json({
+        success: false,
+        message: 'No token, authorization denied'
       });
     }
     
-    const token = authHeader.split(" ")[1];
-    console.log("✅ Token extracted");
+    console.log('🔑 Token received:', token.substring(0, 20) + '...');
     
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    console.log("✅ Token decoded - User ID:", payload.id || payload.userId);
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('✅ Token decoded. User ID:', decoded.id);
     
-    // ✅ Master Prompt expects 'userId' field
-    const userId = payload.userId || payload.id;
-    
-    // Fetch full user from database
-    const user = await User.findById(userId).select("-password");
+    // Find user
+    const user = await User.findById(decoded.id).select('-password');
     
     if (!user) {
-      console.log("❌ User not found in database");
-      return res.status(401).json({ 
+      console.log('❌ User not found for ID:', decoded.id);
+      return res.status(401).json({
         success: false,
-        message: "User not found" 
+        message: 'User not found'
       });
     }
     
-    // ✅ Attach both user and userId (Master Prompt uses both)
+    // Add user to request
     req.user = user;
-    req.userId = user._id;  // ✅ Master Prompt expects req.userId
-    
-    console.log("✅ User attached - ID:", user._id, "Username:", user.username);
+    req.user._id = user._id; // Ensure _id is set
+    console.log('✅ User authenticated:', user._id);
     
     next();
-  } catch (err) {
-    console.error("❌ Auth error:", err.message);
+  } catch (error) {
+    console.error('❌ Auth middleware error:', error.message);
     
-    if (err.name === 'JsonWebTokenError') {
-      return res.status(401).json({ 
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
         success: false,
-        message: "Token is invalid or expired"  // ✅ Master Prompt message
+        message: 'Invalid token'
       });
     }
     
-    if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({ 
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
         success: false,
-        message: "Token is invalid or expired" 
+        message: 'Token expired'
       });
     }
     
-    return res.status(401).json({ 
-      success: false,  // ✅ Master Prompt format
-      message: "Token is invalid or expired",
-      error: err.message 
+    res.status(500).json({
+      success: false,
+      message: 'Server error in authentication'
     });
   }
 };
 
-export default requireAuth;
+export default authMiddleware;

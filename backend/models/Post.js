@@ -25,6 +25,12 @@ const postSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  // If the post was created on someone else's profile (wall)
+  postedOn: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
   content: {
     type: String,
     trim: true,

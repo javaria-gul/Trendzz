@@ -17,6 +17,8 @@ import {
   Ban,
   UserX
 } from 'lucide-react';
+import PostCard from '../components/Home/PostCard';
+import { postsAPI } from '../services/api';
 
 const OtherUserProfile = () => {
   const { userId } = useParams();
@@ -34,6 +36,11 @@ const OtherUserProfile = () => {
   const [isBlocked, setIsBlocked] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState('');
   const [isBlockLoading, setIsBlockLoading] = useState(false);
+  const [posts, setPosts] = useState([]);
+  const [postsLoading, setPostsLoading] = useState(true);
+  const [postsPage, setPostsPage] = useState(1);
+  const [hasMorePosts, setHasMorePosts] = useState(false);
+  
 
   // Enhanced check if user is blocked - using useCallback to fix ESLint warnings
   const checkIfBlocked = useCallback(() => {
@@ -101,6 +108,39 @@ const OtherUserProfile = () => {
       fetchUserProfile();
     }
   }, [userId, checkIfBlocked]);
+
+  // Fetch user's posts for profile view
+  useEffect(() => {
+    const fetchUserPosts = async (page = 1) => {
+      setPostsLoading(true);
+      try {
+        const resp = await postsAPI.getUserPosts(userId, page, 20);
+        console.log('Debug: getUserPosts response (OtherUserProfile):', resp);
+        console.log('Debug: getUserPosts response (OtherUserProfile):', resp);
+        const data = resp?.data || resp;
+        if (data && data.success) {
+          const fetched = data.posts || [];
+          if (page === 1) setPosts(fetched);
+          else setPosts(prev => [...prev, ...fetched]);
+          setHasMorePosts((data.pagination?.pages || 1) > page);
+        } else if (Array.isArray(resp)) {
+          // fallback
+          setPosts(resp);
+        } else {
+          setPosts([]);
+        }
+      } catch (error) {
+        console.error('Error fetching user posts:', error);
+        setPosts([]);
+      } finally {
+        setPostsLoading(false);
+      }
+    };
+
+    if (userId) {
+      fetchUserPosts(1);
+    }
+  }, [userId]);
 
   // Follow functionality
   const handleFollow = async () => {
@@ -273,18 +313,20 @@ const OtherUserProfile = () => {
     setIsAdmireLoading(true);
     try {
       const response = await admireUser(userId);
+      const data = response.data || response;
 
-      if (response.data.success) {
-        setHasAdmired(response.data.hasAdmired);
+      if (data.success) {
+        // ✅ FIXED: Backend returns isAdmired, not hasAdmired
+        setHasAdmired(data.isAdmired);
 
         setUserProfile(prev => ({
           ...prev,
-          admirersCount: response.data.admirersCount || prev.admirersCount
+          admirersCount: data.admirersCount || prev.admirersCount
         }));
 
-        console.log(response.data.hasAdmired ? 'User admired successfully' : 'User unadmired successfully');
+        console.log(data.isAdmired ? 'User admired successfully' : 'User unadmired successfully');
       } else {
-        alert(response.data.message || 'Failed to admire user');
+        alert(data.message || 'Failed to admire user');
       }
     } catch (error) {
       console.error('Error admiring user:', error);
@@ -706,6 +748,8 @@ const OtherUserProfile = () => {
                 </button>
               )}
 
+              {/* Posting on other users' profiles is disabled in search/other-user view */}
+
               {/* Options Button */}
               <button
                 onClick={() => setShowOptions(true)}
@@ -875,7 +919,64 @@ const OtherUserProfile = () => {
             </div>
           </motion.div>
         )}
+
+        {/* User Posts */}
+        <div className="max-w-4xl mx-auto px-3 sm:px-4 mt-6">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6"
+          >
+            <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-3 sm:mb-4">Posts</h2>
+
+            {postsLoading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600 mx-auto"></div>
+                <p className="mt-4 text-gray-600">Loading posts...</p>
+              </div>
+            ) : posts.length === 0 ? (
+              <div className="text-center py-8 text-gray-600">No posts yet.</div>
+            ) : (
+              <div className="space-y-6">
+                {posts.map(post => (
+                  <PostCard
+                    key={post._id}
+                    post={post}
+                    currentUserId={currentUser?._id}
+                    onLikeToggle={() => {}}
+                    onAddComment={() => {}}
+                    formatDate={(d) => d}
+                  />
+                ))}
+              </div>
+            )}
+
+            {hasMorePosts && (
+              <div className="text-center mt-6">
+                <button
+                  onClick={async () => {
+                    const next = postsPage + 1;
+                    setPostsPage(next);
+                    try {
+                      const resp = await postsAPI.getUserPosts(userId, next, 20);
+                      const data = resp?.data || resp;
+                      const fetched = data.posts || [];
+                      setPosts(prev => [...prev, ...fetched]);
+                      setHasMorePosts((data.pagination?.pages || 1) > next);
+                    } catch (err) {
+                      console.error('Error loading more posts:', err);
+                    }
+                  }}
+                  className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full"
+                >
+                  Load more
+                </button>
+              </div>
+            )}
+          </motion.div>
+        </div>
       </div>
+      {/* Posting on other users' profiles is disabled; use user's profile or feed to create posts. */}
     </div>
   );
 };

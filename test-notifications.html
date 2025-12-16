@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Notification Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        button { padding: 10px 20px; margin: 10px; font-size: 16px; cursor: pointer; }
+        .success { background: #4CAF50; color: white; }
+        .error { background: #f44336; color: white; }
+        #output { border: 1px solid #ccc; padding: 15px; margin-top: 20px; min-height: 200px; font-family: monospace; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Notification System Test</h1>
+    
+    <div>
+        <h3>Step 1: Login</h3>
+        <input type="text" id="email" placeholder="Email" value="javeria@gmail.com" style="padding: 8px; width: 200px;">
+        <input type="password" id="password" placeholder="Password" value="Saba" style="padding: 8px; width: 200px;">
+        <button onclick="login()">Login</button>
+    </div>
+
+    <div>
+        <h3>Step 2: Get Post/User IDs</h3>
+        <button onclick="getPosts()">Get Posts</button>
+        <button onclick="getUsers()">Get Users</button>
+    </div>
+
+    <div>
+        <h3>Step 3: Test Actions</h3>
+        <input type="text" id="postId" placeholder="Post ID" style="padding: 8px; width: 300px;">
+        <button onclick="testLike()" class="success">Test Like</button>
+        <button onclick="testComment()" class="success">Test Comment</button>
+        <br><br>
+        <input type="text" id="userId" placeholder="User ID" style="padding: 8px; width: 300px;">
+        <button onclick="testAdmire()" class="success">Test Admire</button>
+    </div>
+
+    <div>
+        <h3>Step 4: Check Notifications</h3>
+        <button onclick="getNotifications()">Get Notifications</button>
+    </div>
+
+    <div id="output">Output will appear here...</div>
+
+    <script>
+        let token = localStorage.getItem('trendzz_token');
+        let baseURL = 'http://localhost:5000/api';
+
+        function log(message) {
+            const output = document.getElementById('output');
+            output.textContent += `\n[${new Date().toLocaleTimeString()}] ${message}`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                log(`Logging in as ${email}...`);
+                const response = await fetch(`${baseURL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    token = data.token;
+                    localStorage.setItem('trendzz_token', token);
+                    log(`✅ Login successful! Token: ${token.substring(0, 20)}...`);
+                    log(`User: ${data.user.name} (${data.user._id})`);
+                } else {
+                    log(`❌ Login failed: ${data.message}`);
+                }
+            } catch (error) {
+                log(`❌ Error: ${error.message}`);
+            }
+        }
+
+        async function getPosts() {
+            try {
+                log('Fetching posts...');
+                const response = await fetch(`${baseURL}/posts`);
+                const data = await response.json();
+                
+                if (data.posts && data.posts.length > 0) {
+                    log(`✅ Found ${data.posts.length} posts`);
+                    data.posts.slice(0, 5).forEach((post, i) => {
+                        log(`  ${i+1}. ID: ${post._id} | By: ${post.user?.name || 'Unknown'}`);
+                    });
+                    document.getElementById('postId').value = data.posts[0]._id;
+                } else {
+                    log('❌ No posts found');
+                }
+            } catch (error) {
+                log(`❌ Error: ${error.message}`);
+            }
+        }
+
+        async function getUsers() {
+            try {
+                log('Fetching users...');
+                const response = await fetch(`${baseURL}/users/all`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                if (data.users && data.users.length > 0) {
+                    log(`✅ Found ${data.users.length} users`);
+                    data.users.slice(0, 5).forEach((user, i) => {
+                        log(`  ${i+1}. ID: ${user._id} | Name: ${user.name}`);
+                    });
+                    document.getElementById('userId').value = data.users[1]._id;
+                } else {
+                    log('❌ No users found');
+                }
+            } catch (error) {
+                log(`❌ Error: ${error.message}`);
+            }
+        }
+
+        async function testLike() {
+            const postId = document.getElementById('postId').value;
+            if (!postId) {
+                alert('Please enter a Post ID');
+                return;
+            }
+
+            try {
+                log(`\n========== TESTING LIKE ==========`);
+                log(`Post ID: ${postId}`);
+                
+                const response = await fetch(`${baseURL}/test/like/${postId}`, {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    log(`✅ Like test successful!`);
+                    log(`Likes count: ${data.likes}`);
+                    log(`Check backend terminal for notification logs`);
+                } else {
+                    log(`❌ Like test failed: ${data.message || data.error}`);
+                }
+            } catch (error) {
+                log(`❌ Error: ${error.message}`);
+            }
+        }
+
+        async function testComment() {
+            const postId = document.getElementById('postId').value;
+            if (!postId) {
+                alert('Please enter a Post ID');
+                return;
+            }
+
+            try {
+                log(`\n========== TESTING COMMENT ==========`);
+                log(`Post ID: ${postId}`);
+                
+                const response = await fetch(`${baseURL}/test/comment/${postId}`, {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text: 'Test comment from manual test' })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    log(`✅ Comment test successful!`);
+                    log(`Comments count: ${data.comments}`);
+                    log(`Check backend terminal for notification logs`);
+                } else {
+                    log(`❌ Comment test failed: ${data.message || data.error}`);
+                }
+            } catch (error) {
+                log(`❌ Error: ${error.message}`);
+            }
+        }
+
+        async function testAdmire() {
+            const userId = document.getElementById('userId').value;
+            if (!userId) {
+                alert('Please enter a User ID');
+                return;
+            }
+
+            try {
+                log(`\n========== TESTING ADMIRE ==========`);
+                log(`User ID: ${userId}`);
+                
+                const response = await fetch(`${baseURL}/test/admire/${userId}`, {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    log(`✅ Admire test successful!`);
+                    log(`Admirers count: ${data.admirersCount}`);
+                    log(`Check backend terminal for notification logs`);
+                } else {
+                    log(`❌ Admire test failed: ${data.message || data.error}`);
+                }
+            } catch (error) {
+                log(`❌ Error: ${error.message}`);
+            }
+        }
+
+        async function getNotifications() {
+            try {
+                log(`\n========== CHECKING NOTIFICATIONS ==========`);
+                const response = await fetch(`${baseURL}/notifications`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    log(`✅ Found ${data.data.length} notifications (${data.unreadCount} unread)`);
+                    data.data.slice(0, 10).forEach((notif, i) => {
+                        log(`  ${i+1}. ${notif.type.toUpperCase()} from ${notif.sender?.name || 'Unknown'} - ${notif.read ? '✅ Read' : '❌ Unread'}`);
+                    });
+                } else {
+                    log(`❌ Failed to get notifications: ${data.message}`);
+                }
+            } catch (error) {
+                log(`❌ Error: ${error.message}`);
+            }
+        }
+
+        // Auto-load token if exists
+        if (token) {
+            log(`Token found in localStorage: ${token.substring(0, 20)}...`);
+        } else {
+            log('No token found. Please login first.');
+        }
+    </script>
+</body>
+</html>

@@ -14,6 +14,7 @@ import Search from './pages/Search';
 import ChatLayout from "./components/ChatLayout";
 import ChatWindow from "./components/ChatWindow";
 import ChatEmptyState from "./components/ChatEmptyState";
+import NotificationPage from './pages/NotificationPage';
 
 
 // Simple Protected Route
@@ -65,6 +66,7 @@ function App() {
               <Route path="profile" element={<Profile />} />
               <Route path="feed" element={<Feed />} /> {/* ✅ ADD: Feed route */}
               <Route path="create-post" element={<div>Create Post Page</div>} />
+              <Route path="/notifications" element={<NotificationPage />} />
             </Route>
             
             <Route path="/settings" element={

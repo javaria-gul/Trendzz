@@ -4,6 +4,9 @@ import { AuthContext } from '../context/AuthContext';
 import { Edit3, Camera, X, User, GraduationCap, Heart, CheckCircle, XCircle, Image } from 'lucide-react';
 import API from '../services/api';
 import { updateProfile } from '../services/user'; // ✅ IMPORT THIS
+import PostCard from '../components/Home/PostCard';
+import { postsAPI } from '../services/api';
+import CreatePostModal from '../components/Home/CreatePostModal';
 
 const Profile = () => {
   const { userData, updateUserData } = useContext(AuthContext);
@@ -26,6 +29,11 @@ const Profile = () => {
   const [tempAvatar, setTempAvatar] = useState(null);
   const [tempCover, setTempCover] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [posts, setPosts] = useState([]);
+  const [postsLoading, setPostsLoading] = useState(true);
+  const [postsPage, setPostsPage] = useState(1);
+  const [hasMorePosts, setHasMorePosts] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   
   const fileInputRef = useRef(null);
   const coverInputRef = useRef(null);
@@ -71,6 +79,36 @@ const Profile = () => {
     };
     testAuth();
   }, []);
+
+  // Fetch posts for the current user's profile
+  useEffect(() => {
+    const fetchUserPosts = async (page = 1) => {
+      setPostsLoading(true);
+      try {
+        if (!userData?._id) return;
+        const resp = await postsAPI.getUserPosts(userData._id, page, 20);
+        console.log('Debug: getUserPosts response (Profile):', resp);
+        const data = resp?.data || resp;
+        if (data && data.success) {
+          const fetched = data.posts || [];
+          if (page === 1) setPosts(fetched);
+          else setPosts(prev => [...prev, ...fetched]);
+          setHasMorePosts((data.pagination?.pages || 1) > page);
+        } else if (Array.isArray(resp)) {
+          setPosts(resp);
+        } else {
+          setPosts([]);
+        }
+      } catch (error) {
+        console.error('Error fetching profile posts:', error);
+        setPosts([]);
+      } finally {
+        setPostsLoading(false);
+      }
+    };
+
+    if (userData?._id) fetchUserPosts(1);
+  }, [userData?._id]);
 
   // Close modal when clicking outside
   useEffect(() => {
@@ -713,6 +751,61 @@ const Profile = () => {
             </>
           )}
         </AnimatePresence>
+        {/* User Posts */}
+        <div className="max-w-4xl mx-auto px-3 sm:px-4 mt-6">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6"
+          >
+            <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-3 sm:mb-4">Your Posts</h2>
+
+            {postsLoading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600 mx-auto"></div>
+                <p className="mt-4 text-gray-600">Loading posts...</p>
+              </div>
+            ) : posts.length === 0 ? (
+              <div className="text-center py-8 text-gray-600">No posts yet.</div>
+            ) : (
+              <div className="space-y-6">
+                {posts.map(post => (
+                  <PostCard
+                    key={post._id}
+                    post={post}
+                    currentUserId={userData?._id}
+                    onLikeToggle={() => {}}
+                    onAddComment={() => {}}
+                    formatDate={(d) => d}
+                  />
+                ))}
+              </div>
+            )}
+
+            {hasMorePosts && (
+              <div className="text-center mt-6">
+                <button
+                  onClick={async () => {
+                    const next = postsPage + 1;
+                    setPostsPage(next);
+                    try {
+                      const resp = await postsAPI.getUserPosts(userData._id, next, 20);
+                      const data = resp?.data || resp;
+                      const fetched = data.posts || [];
+                      setPosts(prev => [...prev, ...fetched]);
+                      setHasMorePosts((data.pagination?.pages || 1) > next);
+                    } catch (err) {
+                      console.error('Error loading more posts:', err);
+                    }
+                  }}
+                  className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full"
+                >
+                  Load more
+                </button>
+              </div>
+            )}
+          </motion.div>
+        </div>
       </div>
     </div>
   );

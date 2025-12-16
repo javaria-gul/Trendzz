@@ -1,8 +1,32 @@
 import API from "./api";
 
 // ✅ FIXED: These now return only the data part
-export const register = (data) => API.post("/auth/register", data).then(res => res.data || res);
-export const login = (data) => API.post("/auth/login", data).then(res => res.data || res);
+export const register = async (data) => {
+  try {
+    const res = await API.post('/auth/register', data);
+    return res.data || res;
+  } catch (err) {
+    console.error('auth.register error:', err);
+    // Normalize network/CORS errors to a consistent Error object
+    const message = err.response?.data?.message || err.message || 'Network error';
+    const error = new Error(message);
+    error.response = err.response;
+    throw error;
+  }
+};
+
+export const login = async (data) => {
+  try {
+    const res = await API.post('/auth/login', data);
+    return res.data || res;
+  } catch (err) {
+    console.error('auth.login error:', err);
+    const message = err.response?.data?.message || err.message || 'Network error';
+    const error = new Error(message);
+    error.response = err.response;
+    throw error;
+  }
+};
 export const verifyEmail = (token) => API.get(`/auth/verify-email?token=${token}`).then(res => res.data || res);
 export const resendVerification = (email) => API.post("/auth/resend-verification", { email }).then(res => res.data || res);
 

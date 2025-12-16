@@ -1,9 +1,8 @@
 import User from "../models/User.js";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-
+import bcrypt from "bcryptjs";import jwt from "jsonwebtoken";
 import cloudinary from '../config/cloudinary.js';
 import multer from 'multer';
+import { createNotification } from './notificationController.js';
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage();
@@ -204,9 +203,154 @@ export const uploadProfileImage = async (req, res) => {
   }
 };
 
+export const followUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const currentUser = req.user;
+
+    console.log("🔵 FOLLOW REQUEST:", {
+      follower: currentUser._id,
+      following: userId
+    });
+
+    // Find the user to follow
+    const userToFollow = await User.findById(userId);
+    
+    if (!userToFollow) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+    }
+
+    // Check if trying to follow self
+    if (currentUser._id.toString() === userId) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'You cannot follow yourself' 
+      });
+    }
+
+    // Check if already following
+    if (currentUser.following.includes(userId)) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Already following this user' 
+      });
+    }
+
+    // Check if blocked
+    if (currentUser.blockedUsers && currentUser.blockedUsers.includes(userId)) {
+      return res.status(403).json({ 
+        success: false,
+        message: 'You have blocked this user' 
+      });
+    }
+
+    // Update following and followers
+    currentUser.following.push(userId);
+    userToFollow.followers.push(currentUser._id);
+    
+    await currentUser.save();
+    await userToFollow.save();
+
+    console.log("✅ FOLLOW SUCCESS:", {
+      follower: currentUser._id,
+      following: userId,
+      followerFollowingCount: currentUser.following.length,
+      userFollowersCount: userToFollow.followers.length
+    });
+
+    // ✅ NOTIFICATION CREATE KARO
+    try {
+      await createNotification(
+        userToFollow._id,        // recipient (jo follow hua)
+        currentUser._id,         // sender (jo follow kar raha)
+        'follow',                // type
+        null,
+        null,
+        req.io
+      );
+      console.log("📢 Follow notification created");
+    } catch (notificationError) {
+      console.error("❌ Notification error (non-critical):", notificationError);
+      // Don't fail the follow if notification fails
+    }
+
+    res.json({
+      success: true,
+      message: 'Successfully followed user',
+      data: {
+        following: currentUser.following,
+        followers: userToFollow.followers,
+        followingCount: currentUser.following.length,
+        followersCount: userToFollow.followers.length
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Follow user error:", error);
+    res.status(500).json({ 
+      success: false,
+      message: error.message || 'Server error during follow' 
+    });
+  }
+};
+
+// ✅ UNFOLLOW USER FUNCTION - OPTIONAL
+export const unfollowUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const currentUser = req.user;
+
+    const userToUnfollow = await User.findById(userId);
+    
+    if (!userToUnfollow) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+    }
+
+    // Remove from following and followers
+    currentUser.following = currentUser.following.filter(id => id.toString() !== userId);
+    userToUnfollow.followers = userToUnfollow.followers.filter(id => id.toString() !== currentUser._id.toString());
+    
+    await currentUser.save();
+    await userToUnfollow.save();
+
+    res.json({
+      success: true,
+      message: 'Successfully unfollowed user',
+      data: {
+        following: currentUser.following,
+        followers: userToUnfollow.followers
+      }
+    });
+
+  } catch (error) {
+    console.error("Unfollow user error:", error);
+    res.status(500).json({ 
+      success: false,
+      message: error.message 
+    });
+  }
+};
+
 // In userController.js - UPDATE registerUser and loginUser
 export const registerUser = async (req, res) => {
   const { name, email, password } = req.body;
+
+  // Debug logging to diagnose signup network issues
+  try {
+    console.log('--- Register request received ---');
+    console.log('Headers:', req.headers);
+    console.log('Body:', { name: req.body.name, email: req.body.email });
+    console.log('OriginalUrl:', req.originalUrl);
+    console.log('--------------------------------');
+  } catch (e) {
+    console.error('Error logging register request:', e);
+  }
 
   try {
     const userExists = await User.findOne({ email });
@@ -281,9 +425,7 @@ export const loginUser = async (req, res) => {
       success: false,
       message: "Server error" 
     });
-  }
-};
-
+  }};
 
 // Get other user's profile
 export const getOtherUserProfile = async (req, res) => {
@@ -635,3 +777,4 @@ export const debugProfileCheck = async (req, res) => {
     });
   }
 };
+

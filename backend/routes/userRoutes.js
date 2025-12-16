@@ -1,7 +1,7 @@
 import express from "express";
 import User from "../models/User.js";
 import requireAuth from "../middleware/authMiddleware.js";
-
+import { createNotification } from "../controllers/notificationController.js"; // IMPORT ADDED
 
 const router = express.Router();
 
@@ -172,7 +172,7 @@ router.get("/profile/:userId", requireAuth, async (req, res) => {
   }
 });
 
-// Follow/Unfollow user
+// Follow/Unfollow user WITH NOTIFICATION ADDED
 router.post("/follow/:userId", requireAuth, async (req, res) => {
   try {
     const targetUserId = req.params.userId;
@@ -215,6 +215,21 @@ router.post("/follow/:userId", requireAuth, async (req, res) => {
       await User.findByIdAndUpdate(currentUserId, {
         $addToSet: { following: targetUserId }
       });
+
+      // ✅ NOTIFICATION CREATE - ADDED HERE
+      try {
+        await createNotification(
+          targetUserId,        // recipient (jo follow hua)
+          currentUserId,       // sender (jo follow kar raha)
+          'follow',            // type
+          null,
+          null,
+          req.io
+        );
+        console.log("📢 Follow notification created");
+      } catch (notificationError) {
+        console.error("❌ Notification error (non-critical):", notificationError);
+      }
     }
 
     // Get updated counts
@@ -416,7 +431,6 @@ router.post("/unblock/:userId", requireAuth, async (req, res) => {
   }
 });
 
-
 // Get suggested users for onboarding
 router.get("/suggested-users", requireAuth, async (req, res) => {
   try {
@@ -469,6 +483,96 @@ router.get("/debug/all-users", requireAuth, async (req, res) => {
     res.status(500).json({ 
       success: false,
       message: "Debug error" 
+    });
+  }
+});
+
+// ✅ NEW: Toggle admiration endpoint
+router.post("/admire/:userId", requireAuth, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const currentUserId = req.user._id;
+
+    console.log("🔵 ADMIRATION REQUEST:", {
+      admirer: currentUserId,
+      admired: userId
+    });
+
+    // Find the user to admire
+    const userToAdmire = await User.findById(userId);
+    
+    if (!userToAdmire) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+    }
+
+    // Check if trying to admire self
+    if (currentUserId.toString() === userId) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'You cannot admire yourself' 
+      });
+    }
+
+    // Check if already admired
+    const admirerIndex = userToAdmire.admirers.findIndex(admirer => 
+      admirer.toString() === currentUserId.toString()
+    );
+
+    let isNewAdmiration = false;
+
+    if (admirerIndex === -1) {
+      // ✅ Add admiration
+      userToAdmire.admirers.push(currentUserId);
+      userToAdmire.admirersCount = (userToAdmire.admirersCount || 0) + 1;
+      isNewAdmiration = true;
+
+      console.log("✅ ADMIRATION ADDED");
+
+      // ✅ Create notification for admiration
+      try {
+        await createNotification(
+          userToAdmire._id,      // recipient (jo admire hua)
+          currentUserId,         // sender (jo admire kar raha)
+          'admired',             // type
+          null,
+          null,
+          req.io
+        );
+      } catch (notifError) {
+        console.error('⚠️ Admiration notification failed (non-critical):', notifError.message);
+      }
+    } else {
+      // ✅ Remove admiration
+      userToAdmire.admirers.splice(admirerIndex, 1);
+      userToAdmire.admirersCount = Math.max(0, (userToAdmire.admirersCount || 1) - 1);
+      console.log("✅ ADMIRATION REMOVED");
+    }
+
+    await userToAdmire.save();
+
+    console.log("✅ ADMIRATION ACTION SUCCESS:", {
+      admirer: currentUserId,
+      admired: userId,
+      action: isNewAdmiration ? 'added' : 'removed',
+      admirersCount: userToAdmire.admirersCount
+    });
+
+    res.json({
+      success: true,
+      message: isNewAdmiration ? 'User admired successfully' : 'Admiration removed',
+      action: isNewAdmiration ? 'admired' : 'unadmired',
+      admirersCount: userToAdmire.admirersCount,
+      isAdmired: isNewAdmiration
+    });
+  } catch (error) {
+    console.error('❌ Admiration toggle error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to toggle admiration',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });

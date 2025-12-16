@@ -3,6 +3,7 @@ import Post from "../models/Post.js";
 import User from "../models/User.js";
 import cloudinary from '../config/cloudinary.js'; // ✅ IMPORT CLOUDINARY
 import streamifier from "streamifier";
+import { createNotificationSafely, createBulkNotifications } from "../utils/notificationHelper.js"; // ✅ NOTIFICATION HELPERS
 
 // ✅ Helper function with proper error handling
 const uploadToCloudinaryLocal = (fileBuffer, options = {}) => {
@@ -36,16 +37,16 @@ const uploadToCloudinaryLocal = (fileBuffer, options = {}) => {
 export const createPost = async (req, res) => {
   try {
     console.log("🎯 CREATE POST - Starting...");
-    const { content, hashtags, location } = req.body;
+    const { content, hashtags, location, postedOn } = req.body;
     const userId = req.user._id;
 
     console.log("📝 Content:", content);
-    console.log("📁 Files received:", req.files?.length || 0);
+    console.log("📁 Files received:", (req.files && req.files.length) || 0);
 
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Please select at least one file to upload"
+        message: 'Please select at least one file to upload'
       });
     }
 
@@ -131,7 +132,7 @@ export const createPost = async (req, res) => {
 
     // Create post
     console.log("📦 Creating post in database...");
-    const post = new Post({
+    const postData = {
       user: userId,
       content: content || '',
       media,
@@ -139,10 +140,54 @@ export const createPost = async (req, res) => {
       location: location || '',
       likes: [],
       comments: []
-    });
+    };
+
+    // If posting on another user's profile, set postedOn
+    if (postedOn) {
+      postData.postedOn = postedOn;
+    }
+
+    const post = new Post(postData);
 
     const savedPost = await post.save();
+
+    // Update postsCount on the appropriate user (profile owner if postedOn present, otherwise author)
+    try {
+      const targetUserId = postedOn || userId;
+      await User.findByIdAndUpdate(targetUserId, { $inc: { postsCount: 1 } });
+    } catch (incErr) {
+      console.error('Failed to increment postsCount:', incErr.message);
+    }
     console.log("✅ Post saved to database:", savedPost._id);
+
+    // ✅ Detect @mentions in post content and notify mentioned users
+    try {
+      if (content && typeof content === 'string') {
+        const mentionRegex = /@([a-zA-Z0-9_]+)/g;
+        const mentionedUsernames = [];
+        let match;
+        while ((match = mentionRegex.exec(content)) !== null) {
+          mentionedUsernames.push(match[1]);
+        }
+
+        if (mentionedUsernames.length > 0) {
+          // Find user IDs for these usernames
+          const mentionedUsers = await User.find({ username: { $in: mentionedUsernames } }).select('_id');
+          const recipientIds = mentionedUsers.map(u => u._id).filter(id => id.toString() !== userId.toString());
+          if (recipientIds.length > 0) {
+            await createBulkNotifications({
+              recipientIds,
+              senderId: userId,
+              type: 'mention',
+              postId: savedPost._id,
+              io: req.io
+            }).catch(err => console.error('Mention notify error:', err.message));
+          }
+        }
+      }
+    } catch (mentionErr) {
+      console.error('❌ Mention processing failed (non-critical):', mentionErr.message);
+    }
 
     // Populate user data
     const populatedPost = await Post.findById(savedPost._id)
@@ -200,7 +245,7 @@ export const getFeed = async (req, res) => {
     
     // Log each post for debugging
     posts.forEach((post, index) => {
-      console.log(`Post ${index + 1}: ID=${post._id}, User=${post.user?.username || 'No user'}`);
+      console.log(`Post ${index + 1}: ID=${post._id}, User=${(post.user && post.user.username) || 'No user'}`);
     });
 
     res.json({
@@ -245,8 +290,8 @@ export const debugCheckPosts = async (req, res) => {
     latestPosts.forEach((post, index) => {
       console.log(`Post ${index + 1}:`);
       console.log(`  ID: ${post._id}`);
-      console.log(`  Content: "${post.content?.substring(0, 50)}..."`);
-      console.log(`  User: ${post.user?.username || 'Unknown'}`);
+      console.log(`  Content: "${(post.content && post.content.substring(0, 50)) || ''}..."`);
+      console.log(`  User: ${(post.user && post.user.username) || 'Unknown'}`);
       console.log(`  Created: ${post.createdAt}`);
       console.log('---');
     });
@@ -274,11 +319,13 @@ export const debugCheckPosts = async (req, res) => {
 
 // ... rest of the functions remain the same ...
 
-// ✅ 3. TOGGLE LIKE - FIXED WITH BETTER RESPONSE
+// ✅ 3. TOGGLE LIKE - FIXED WITH NOTIFICATIONS
 export const toggleLike = async (req, res) => {
   try {
     const { postId } = req.params;
     const userId = req.user._id;
+
+    console.log('❤️ LIKE REQUEST:', { postId, userId, hasIO: !!req.io });
 
     if (!postId) {
       return res.status(400).json({
@@ -287,7 +334,7 @@ export const toggleLike = async (req, res) => {
       });
     }
 
-    const post = await Post.findById(postId);
+    const post = await Post.findById(postId).populate('user', '_id');
     if (!post) {
       return res.status(404).json({
         success: false,
@@ -300,18 +347,38 @@ export const toggleLike = async (req, res) => {
     );
 
     let action = '';
+    let isNewLike = false;
     
     if (likeIndex === -1) {
-      // Like the post
+      // ✅ Like the postttt
       post.likes.push(userId);
+      post.likesCount = post.likes.length; // Update count
       action = 'liked';
+      isNewLike = true;
+
+      // ✅ Create notification for new like
+      try {
+        console.log('🔔 Creating like notification...');
+        await createNotificationSafely({
+          recipientId: post.user._id,
+          senderId: userId,
+          type: 'like',
+          postId,
+          io: req.io
+        });
+        console.log('✅ Like notification created successfully');
+      } catch (notifError) {
+        console.error('⚠️ Like notification failed (non-critical):', notifError.message);
+      }
     } else {
-      // Unlike the post
+      // ✅ Unlike the post
       post.likes.splice(likeIndex, 1);
+      post.likesCount = post.likes.length; // Update count
       action = 'unliked';
     }
 
     await post.save();
+    console.log('✅ Post saved to database');
 
     // ✅ Get updated post with populated data
     const updatedPost = await Post.findById(postId)
@@ -326,37 +393,41 @@ export const toggleLike = async (req, res) => {
       username: req.user.username,
       action,
       likesCount: updatedPost.likes.length,
-      isLiked: likeIndex === -1,
+      isLiked: isNewLike ? true : false,
       timestamp: new Date()
     };
 
     // ✅ Emit socket event if available
     if (req.io) {
       req.io.to(`post_${postId}`).emit('like_update', realtimeData);
+      console.log('📡 Socket like_update emitted');
     }
 
     res.json({
       success: true,
       message: `Post ${action}`,
       likes: updatedPost.likes.length,
-      isLiked: likeIndex === -1,
+      isLiked: isNewLike,
       likesList: updatedPost.likes,
-      realtimeData // ✅ For frontend real-time updates
+      realtimeData
     });
   } catch (error) {
-    console.error('Toggle like error:', error);
+    console.error('❌ Toggle like error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to toggle like'
+      message: 'Failed to toggle like',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
-// ✅ 4. ADD COMMENT - COMPLETE REAL-TIME VERSION
+// ✅ 4. ADD COMMENT - WITH NOTIFICATIONS & BETTER ERROR HANDLING
 export const addCommentNew = async (req, res) => {
   try {
     const { postId, text } = req.body;
     const userId = req.user._id;
+
+    console.log('💬 COMMENT REQUEST:', { postId, userId, hasIO: !!req.io });
 
     if (!postId || !text) {
       return res.status(400).json({
@@ -365,7 +436,15 @@ export const addCommentNew = async (req, res) => {
       });
     }
 
-    const post = await Post.findById(postId);
+    // ✅ Validate comment length
+    if (text.trim().length < 1 || text.trim().length > 1000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment must be between 1 and 1000 characters'
+      });
+    }
+
+    const post = await Post.findById(postId).populate('user', '_id');
     if (!post) {
       return res.status(404).json({
         success: false,
@@ -380,9 +459,11 @@ export const addCommentNew = async (req, res) => {
     };
 
     post.comments.push(comment);
+    post.commentsCount = post.comments.length; // Update count
     await post.save();
+    console.log('✅ Comment saved to database');
 
-    // ✅ COMPLETE POPULATION FOR FRONTEND
+    // ✅ Get populated comment
     const populatedPost = await Post.findById(postId)
       .populate({
         path: 'comments.user',
@@ -393,49 +474,76 @@ export const addCommentNew = async (req, res) => {
         path: 'user',
         select: 'username profilePicture avatar name',
         model: User
-      })
-      .populate({
-        path: 'likes',
-        select: 'username profilePicture',
-        model: User
-      })
-      .lean();
-
-    // ✅ Get the newly added comment
+      });
+    
     const newComment = populatedPost.comments[populatedPost.comments.length - 1];
 
-    // ✅ Prepare real-time data
-    const realtimeData = {
-      postId,
-      comment: newComment,
-      user: {
-        _id: req.user._id,
-        username: req.user.username,
-        profilePicture: req.user.profilePicture
-      },
-      totalComments: populatedPost.comments.length,
-      timestamp: new Date()
-    };
+    try {
+      console.log('🔔 Creating comment notification...');
+      await createNotificationSafely({
+        recipientId: post.user._id,
+        senderId: userId,
+        type: 'comment',
+        postId,
+        io: req.io,
+        data: { commentText: text.substring(0, 100) }
+      });
+      console.log('✅ Comment notification created successfully');
+    } catch (notifError) {
+      console.error('⚠️ Comment notification failed (non-critical):', notifError.message);
+    }
 
-    // ✅ Emit socket event to all users viewing this post
+    // ✅ Detect @mentions in comment text and notify mentioned users
+    try {
+      const mentionRegex = /@([a-zA-Z0-9_]+)/g;
+      const mentionedUsernames = [];
+      let m;
+      while ((m = mentionRegex.exec(text)) !== null) {
+        mentionedUsernames.push(m[1]);
+      }
+
+      if (mentionedUsernames.length > 0) {
+        console.log(`🔔 Detected ${mentionedUsernames.length} mentions: ${mentionedUsernames.join(', ')}`);
+        const mentionedUsers = await User.find({ username: { $in: mentionedUsernames } }).select('_id');
+        const recipientIds = mentionedUsers.map(u => u._id).filter(id => id.toString() !== userId.toString());
+        if (recipientIds.length > 0) {
+          console.log(`📢 Creating mention notifications for ${recipientIds.length} users`);
+          await createBulkNotifications({
+            recipientIds,
+            senderId: userId,
+            type: 'mention',
+            postId,
+            commentId: newComment._id,
+            io: req.io
+          }).catch(err => console.error('Mention notify (comment) error:', err.message));
+        }
+      }
+    } catch (mentionErr) {
+      console.error('❌ Mention processing (comment) failed (non-critical):', mentionErr.message);
+    }
+
+    // ✅ Emit real-time update
     if (req.io) {
-      req.io.to(`post_${postId}`).emit('new_comment', realtimeData);
-      console.log(`📢 Emitted new_comment event for post ${postId}`);
+      req.io.to(`post_${postId}`).emit('comment_added', {
+        postId,
+        comment: newComment,
+        totalComments: populatedPost.comments.length
+      });
+      console.log('📡 Socket comment_added emitted');
     }
 
     res.json({
       success: true,
       message: 'Comment added successfully',
       comment: newComment,
-      totalComments: populatedPost.comments.length,
-      realtimeData // ✅ For frontend real-time updates
+      totalComments: populatedPost.comments.length
     });
-    
   } catch (error) {
-    console.error('Add comment error:', error);
+    console.error('❌ Comment error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to add comment'
+      message: 'Failed to add comment',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -496,15 +604,18 @@ export const getUserPosts = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const posts = await Post.find({ user: userId })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate('user', 'username profilePicture')
-      .populate('comments.user', 'username profilePicture')
-      .lean();
+      console.log(`getUserPosts called for userId=${userId}, page=${page}, limit=${limit}`);
+      const query = { $or: [{ user: userId }, { postedOn: userId }] };
+      const posts = await Post.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('user', 'username profilePicture')
+        .populate('comments.user', 'username profilePicture')
+        .lean();
 
-    const totalPosts = await Post.countDocuments({ user: userId });
+      const totalPosts = await Post.countDocuments(query);
+      console.log(`getUserPosts returning ${posts.length} posts (total ${totalPosts}) for userId=${userId}`);
 
     res.json({
       success: true,

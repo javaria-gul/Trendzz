@@ -18,23 +18,20 @@ const HomeFeed = () => {
     try {
       setLoading(true);
       console.log(`🔄 Fetching posts page ${pageNum}...`);
-      
-      const response = await postsAPI.getPosts(pageNum, 100);
-      
+      const limit = 20;
+      const response = await postsAPI.getAllPosts(pageNum, limit);
       console.log('📥 API Response:', response);
-      
-      // ✅ NEW FORMAT: response.data.posts access
-      // ✅ OLD FORMAT FALLBACK: response.posts
+
       const postsData = response.data?.posts || response.posts || [];
-      
+
       if (pageNum === 1) {
         setPosts(postsData);
       } else {
         setPosts(prev => [...prev, ...postsData]);
       }
-      
-      // Check if there are more posts
-      setHasMore(postsData.length === 100);
+
+      const totalPages = response.data?.pagination?.pages || Math.ceil((response.data?.pagination?.total || postsData.length) / limit);
+      setHasMore(pageNum < totalPages);
       
     } catch (error) {
       console.error('❌ Error fetching posts:', error);
@@ -54,40 +51,34 @@ const HomeFeed = () => {
       console.log('❤️ Liking post:', postId);
       
       const response = await postsAPI.likePost(postId);
-      console.log('Like response:', response);
+      console.log('✅ Like response:', response);
       
-      // ✅ NEW FORMAT: response.data contains the data
-      // ✅ OLD FORMAT: response directly contains data
-      const responseData = response.data || response;
+      // Backend returns: { success: true, likes: number, isLiked: boolean, likesList: [...] }
+      const data = response.data || response;
       
-      if (response.success || responseData.success) {
-        const successData = responseData.success ? responseData : response;
+      if (data.success) {
+        console.log('✅ Like saved to database. Updating UI...');
         
+        // Update post with database-saved data
         setPosts(prevPosts => 
           prevPosts.map(post => {
             if (post._id === postId) {
               return {
                 ...post,
-                // ✅ Handle both new and old response formats
-                likes: successData.data?.likes || 
-                      successData.likes || 
-                      successData.likedBy || 
-                      post.likes,
-                likesCount: successData.data?.likesCount || 
-                          successData.likesCount || 
-                          successData.likes || 
-                          (successData.likedBy?.length || 0) || 
-                          post.likesCount
+                likes: data.likesList || post.likes, // Use the likesList from database
+                likesCount: data.likes || post.likesCount // Use the count from database
               };
             }
             return post;
           })
         );
+        
+        console.log(`✅ Post ${postId} updated with ${data.likes} likes`);
       } else {
-        console.error('Like failed:', response.message || response.data?.message);
+        console.error('❌ Like failed:', data.message);
       }
     } catch (error) {
-      console.error('Error liking post:', error);
+      console.error('❌ Error liking post:', error);
       alert('Failed to like post');
     }
   };
@@ -98,43 +89,37 @@ const HomeFeed = () => {
       console.log('💬 Adding comment to post:', postId);
       
       const response = await postsAPI.addComment(postId, text);
-      console.log('Comment response:', response);
+      console.log('✅ Comment response:', response);
       
-      // ✅ NEW FORMAT: response.data contains the data
-      const responseData = response.data || response;
+      // Backend returns: { success: true, comment: {...}, totalComments: number }
+      const data = response.data || response;
       
-      if (response.success || responseData.success) {
-        const successData = responseData.success ? responseData : response;
+      if (data.success) {
+        console.log('✅ Comment saved to database. Updating UI...');
         
+        // Update post with database-saved comment
         setPosts(prevPosts => 
           prevPosts.map(post => {
             if (post._id === postId) {
               return {
                 ...post,
-                // ✅ Handle both new and old response formats
-                comments: [...(post.comments || []), 
-                          successData.data?.comment || 
-                          successData.comment || 
-                          successData.data],
-                commentsCount: successData.data?.totalComments || 
-                              successData.totalComments || 
-                              successData.commentsCount || 
-                              ((post.commentsCount || 0) + 1)
+                comments: [...(post.comments || []), data.comment], // Add the saved comment
+                commentsCount: data.totalComments || ((post.commentsCount || 0) + 1) // Use database count
               };
             }
             return post;
           })
         );
         
-        // ✅ Return comment for PostCard optimistic update
+        console.log(`✅ Comment added to post ${postId}. Total comments: ${data.totalComments}`);
+        
+        // Return comment for PostCard optimistic update
         return { 
-          comment: successData.data?.comment || 
-                  successData.comment || 
-                  successData.data 
+          comment: data.comment 
         };
       } else {
-        console.error('Comment failed:', response.message || responseData.message);
-        throw new Error(response.message || responseData.message);
+        console.error('Comment failed:', data.message);
+        throw new Error(data.message);
       }
     } catch (error) {
       console.error('Error adding comment:', error);

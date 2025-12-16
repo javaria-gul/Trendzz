@@ -2,6 +2,7 @@ import express from "express";
 import { Chat, Message } from "../models/Chat.js";
 import User from "../models/User.js";
 import requireAuth from "../middleware/authMiddleware.js";
+import { createNotificationSafely } from '../utils/notificationHelper.js';
 
 const router = express.Router();
 
@@ -264,6 +265,22 @@ router.post("/chats/:chatId/messages", requireAuth, async (req, res) => {
     await chat.save();
 
     console.log(`✅ Message sent: ${message._id}`);
+
+    // ✅ Notify other participants about the new message
+    try {
+      const otherParticipants = chat.participants.filter(pid => pid.toString() !== req.user._id.toString());
+      for (const recipientId of otherParticipants) {
+        await createNotificationSafely({
+          recipientId,
+          senderId: req.user._id,
+          type: 'message',
+          io: req.app?.io || null,
+          data: { text: (text || '').substring(0, 100) }
+        }).catch(err => console.error('Message notify error:', err.message));
+      }
+    } catch (notifyErr) {
+      console.error('❌ Message notification failed (non-critical):', notifyErr.message);
+    }
 
     res.json({ 
       success: true, 
