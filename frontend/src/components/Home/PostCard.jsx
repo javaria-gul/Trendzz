@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 import { SocketContext } from '../../context/SocketContext';
+import { postsAPI } from '../../services/posts';
 
 const PostCard = ({ 
   post, 
@@ -29,6 +30,14 @@ const PostCard = ({
   const [showPostOptions, setShowPostOptions] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState(null);
   const [deletingPost, setDeletingPost] = useState(false);
+  const [showLikesModal, setShowLikesModal] = useState(false);
+  
+  // ✅ Comment reply and edit states
+  const [replyingToCommentId, setReplyingToCommentId] = useState(null);
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editingReplyData, setEditingReplyData] = useState(null); // { commentId, replyId }
+  const [showReplies, setShowReplies] = useState({});
+  const [showReplyOptions, setShowReplyOptions] = useState(null);
   
   // ✅ FIXED: Default outline heart (not filled)
   const [selectedEmoji, setSelectedEmoji] = useState('🤍');
@@ -48,7 +57,33 @@ const PostCard = ({
     { emoji: '😮', label: 'Wow', type: 'wow', color: '#9370DB' }
   ];
 
-  // ✅ FIXED: useEffect for reactions - SIMPLIFIED
+  // ✅ Get top 3 most used reactions (WhatsApp style)
+  const getTopReactions = () => {
+    if (!post?.likes || post.likes.length === 0) return [];
+    
+    const reactionCounts = {};
+    post.likes.forEach(like => {
+      const reaction = like.reaction || 'like';
+      reactionCounts[reaction] = (reactionCounts[reaction] || 0) + 1;
+    });
+    
+    const sorted = Object.entries(reactionCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+    
+    return sorted.map(([type]) => {
+      const emojiObj = emojis.find(e => e.type === type);
+      return emojiObj ? emojiObj.emoji : '👍';
+    });
+  };
+
+  // ✅ Get emoji by reaction type
+  const getEmojiByType = (type) => {
+    const emojiObj = emojis.find(e => e.type === type);
+    return emojiObj ? emojiObj.emoji : '👍';
+  };
+
+  // ✅ FIXED: useEffect for reactions - Sync with post prop
   useEffect(() => {
     if (!post || !currentUserId) return;
 
@@ -78,7 +113,8 @@ const PostCard = ({
     }
 
     setIsLiked(userLiked);
-    setLikesCount(post.likes?.length || 0);
+    // ✅ Use likesCount from post if available, otherwise calculate from array
+    setLikesCount(post.likesCount ?? post.likes?.length ?? 0);
 
     // 2. Set emoji based on reaction
     if (userLiked) {
@@ -97,7 +133,7 @@ const PostCard = ({
 
     // 3. Comments
     setComments(post?.comments || []);
-  }, [post, currentUserId]);
+  }, [post, currentUserId, post.likes, post.likesCount]);
 
   // ✅ Listen for real-time updates via socket
   useEffect(() => {
@@ -213,35 +249,40 @@ const PostCard = ({
       const newEmoji = emojiObj.emoji;
       const reactionType = emojiObj.type;
       
-      // ✅ UPDATE: If already liked, just change reaction
-      if (isLiked) {
-        // Already liked - change reaction type
-        setSelectedEmoji(newEmoji);
-        // Likes count same rahega
-      } else {
-        // Not liked - new like
+      // Optimistically update UI
+      const wasLiked = isLiked;
+      setSelectedEmoji(newEmoji);
+      if (!wasLiked) {
         setIsLiked(true);
         setLikesCount(prev => prev + 1);
-        setSelectedEmoji(newEmoji);
       }
       
-      // Call API
+      // Call API - backend will handle update/add logic
       if (onLikeToggle) {
         await onLikeToggle(post._id, reactionType);
       }
       
     } catch (error) {
       console.error('Emoji error:', error);
-      // Revert on error
-      const emojiMap = {
-        'like': '👍',
-        'love': '❤️',
-        'haha': '😂',
-        'sad': '😢',
-        'angry': '😡',
-        'wow': '😮'
-      };
-      setSelectedEmoji(isLiked ? emojiMap['love'] : '🤍');
+      // Revert on error - reload from post data
+      if (post.likes && Array.isArray(post.likes)) {
+        const userReaction = post.likes.find(like => 
+          like.user?._id?.toString() === currentUserId?.toString() ||
+          like.user?.toString() === currentUserId?.toString()
+        );
+        if (userReaction) {
+          const emojiMap = {
+            'like': '👍', 'love': '❤️', 'haha': '😂',
+            'sad': '😢', 'angry': '😡', 'wow': '😮'
+          };
+          setSelectedEmoji(emojiMap[userReaction.reaction] || '👍');
+          setIsLiked(true);
+        } else {
+          setSelectedEmoji('🤍');
+          setIsLiked(false);
+        }
+        setLikesCount(post.likes.length);
+      }
     } finally {
       setLikeLoading(false);
       setShowEmojiPicker(false);
@@ -254,29 +295,32 @@ const PostCard = ({
     
     setLikeLoading(true);
     
+    const previousState = { isLiked, likesCount, selectedEmoji };
+    
     try {
+      // Optimistically update UI
       if (isLiked) {
-        // Unlike
-        if (onLikeToggle) {
-          await onLikeToggle(post._id, 'like');
-        }
+        // Unlike - clicking same reaction removes it
         setIsLiked(false);
         setLikesCount(prev => Math.max(0, prev - 1));
-        setSelectedEmoji('🤍'); // ✅ Reset to outline heart
+        setSelectedEmoji('🤍');
       } else {
-        // Like with default (like reaction)
-        if (onLikeToggle) {
-          await onLikeToggle(post._id, 'like');
-        }
+        // Like with default thumbs up
         setIsLiked(true);
         setLikesCount(prev => prev + 1);
-        setSelectedEmoji('👍'); // ✅ Default thumbs up for like
+        setSelectedEmoji('👍');
+      }
+      
+      // Call API
+      if (onLikeToggle) {
+        await onLikeToggle(post._id, 'like');
       }
     } catch (error) {
       console.error('Like error:', error);
-      // Revert
-      setIsLiked(!isLiked);
-      setSelectedEmoji(isLiked ? '🤍' : '👍');
+      // Revert to previous state on error
+      setIsLiked(previousState.isLiked);
+      setLikesCount(previousState.likesCount);
+      setSelectedEmoji(previousState.selectedEmoji);
     } finally {
       setLikeLoading(false);
       setShowEmojiPicker(false);
@@ -365,42 +409,127 @@ const PostCard = ({
     setCommentLoading(true);
     
     try {
-      // Create temporary comment for immediate UI update
-      const tempComment = {
-        _id: `temp_${Date.now()}`,
-        user: { 
-          _id: currentUserId, 
-          username: userData?.username || 'You',
-          profilePicture: userData?.profilePicture || '',
-          avatar: userData?.avatar || ''
-        },
-        text: trimmedText,
-        createdAt: new Date().toISOString()
-      };
-      
-      // Update UI immediately
-      setComments(prev => [...prev, tempComment]);
-      setCommentText('');
-      
-      // Call API
-      if (onAddComment) {
-        const result = await onAddComment(post._id, trimmedText);
+      // Check if editing comment
+      if (editingCommentId) {
+        const response = await postsAPI.editComment(post._id, editingCommentId, trimmedText);
+        const updatedComment = response.data?.comment;
         
-        // Replace temp comment with real one from API response
-        if (result?.comment) {
+        if (updatedComment) {
           setComments(prev => 
-            prev.map(c => 
-              c._id === tempComment._id ? result.comment : c
-            )
+            prev.map(c => c._id === editingCommentId ? updatedComment : c)
           );
+        } else {
+          setComments(prev => 
+            prev.map(c => c._id === editingCommentId ? { ...c, text: trimmedText, isEdited: true } : c)
+          );
+        }
+        
+        setEditingCommentId(null);
+        setCommentText('');
+      } 
+      // Check if editing reply
+      else if (editingReplyData) {
+        const { commentId, replyId } = editingReplyData;
+        await postsAPI.editReply(post._id, commentId, replyId, trimmedText);
+        
+        setComments(prev => 
+          prev.map(c => {
+            if (c._id === commentId) {
+              return {
+                ...c,
+                replies: c.replies.map(r => 
+                  r._id === replyId ? { ...r, text: trimmedText, isEdited: true } : r
+                )
+              };
+            }
+            return c;
+          })
+        );
+        
+        setEditingReplyData(null);
+        setCommentText('');
+      }
+      // Check if replying to a comment
+      else if (replyingToCommentId) {
+        const response = await postsAPI.replyToComment(post._id, replyingToCommentId, trimmedText);
+        const updatedComment = response.data?.comment;
+        
+        if (updatedComment) {
+          setComments(prev => 
+            prev.map(c => c._id === replyingToCommentId ? updatedComment : c)
+          );
+        } else {
+          setComments(prev => 
+            prev.map(c => {
+              if (c._id === replyingToCommentId) {
+                return {
+                  ...c,
+                  replies: [...(c.replies || []), {
+                    _id: `temp_${Date.now()}`,
+                    user: { 
+                      _id: currentUserId, 
+                      username: userData?.username || 'You',
+                      profilePicture: userData?.profilePicture || '',
+                      avatar: userData?.avatar || ''
+                    },
+                    text: trimmedText,
+                    createdAt: new Date().toISOString(),
+                    isEdited: false
+                  }]
+                };
+              }
+              return c;
+            })
+          );
+        }
+        
+        setReplyingToCommentId(null);
+        setCommentText('');
+      } 
+      // Regular new comment
+      else {
+        const tempComment = {
+          _id: `temp_${Date.now()}`,
+          user: { 
+            _id: currentUserId, 
+            username: userData?.username || 'You',
+            profilePicture: userData?.profilePicture || '',
+            avatar: userData?.avatar || ''
+          },
+          text: trimmedText,
+          createdAt: new Date().toISOString()
+        };
+        
+        setComments(prev => [...prev, tempComment]);
+        setCommentText('');
+        
+        if (onAddComment) {
+          const result = await onAddComment(post._id, trimmedText);
+          
+          if (result?.comment) {
+            setComments(prev => 
+              prev.map(c => 
+                c._id === tempComment._id ? result.comment : c
+              )
+            );
+          }
         }
       }
     } catch (error) {
-      // Remove temp comment on error
       setComments(prev => prev.filter(c => !c._id?.includes('temp')));
       setCommentText(trimmedText);
       console.error('Comment error:', error);
-      alert('Failed to add comment');
+      
+      // Check for moderation error (403)
+      if (error.response?.status === 403) {
+        alert('⚠️ Your text violates community guidelines');
+      } else {
+        alert('Failed to process comment');
+      }
+      
+      setReplyingToCommentId(null);
+      setEditingCommentId(null);
+      setEditingReplyData(null);
     } finally {
       setCommentLoading(false);
     }
@@ -420,34 +549,55 @@ const PostCard = ({
     }
   };
 
-  // Parse content with mentions
+  // Parse content with mentions and hashtags
   const parseContentWithMentions = (content) => {
     if (!content) return null;
     
-    const mentionRegex = /@(\w+)/g;
+    // Combined regex for both mentions and hashtags
+    const combinedRegex = /(@\w+)|(#\w+)/g;
     const parts = [];
     let lastIndex = 0;
     let match;
     
-    while ((match = mentionRegex.exec(content)) !== null) {
+    while ((match = combinedRegex.exec(content)) !== null) {
+      // Add text before match
       if (match.index > lastIndex) {
         parts.push(content.substring(lastIndex, match.index));
       }
       
-      const username = match[1];
-      parts.push(
-        <span 
-          key={match.index}
-          className="text-blue-600 font-medium hover:text-blue-800 cursor-pointer transition-colors"
-          onClick={() => navigate(`/search?q=@${username}`)}
-        >
-          @{username}
-        </span>
-      );
+      if (match[1]) {
+        // It's a mention (@username)
+        const username = match[1].substring(1);
+        parts.push(
+          <span 
+            key={match.index}
+            className="text-blue-600 font-medium hover:text-blue-800 cursor-pointer transition-colors"
+            onClick={() => navigate(`/search?q=@${username}`)}
+          >
+            @{username}
+          </span>
+        );
+      } else if (match[2]) {
+        // It's a hashtag (#hashtag)
+        const hashtag = match[2].substring(1);
+        parts.push(
+          <span 
+            key={match.index}
+            className="text-blue-600 font-semibold hover:text-blue-800 cursor-pointer transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/hashtag/${hashtag}`);
+            }}
+          >
+            #{hashtag}
+          </span>
+        );
+      }
       
       lastIndex = match.index + match[0].length;
     }
     
+    // Add remaining text
     if (lastIndex < content.length) {
       parts.push(content.substring(lastIndex));
     }
@@ -486,20 +636,129 @@ const PostCard = ({
     }
     
     setDeletingCommentId(commentId);
+    setShowCommentOptions(null);
     
     try {
       if (onDeleteComment) {
         await onDeleteComment(post._id, commentId);
+        // Update UI only after successful deletion
+        setComments(prev => prev.filter(comment => comment._id !== commentId));
       }
-      
-      setComments(prev => prev.filter(comment => comment._id !== commentId));
-      setShowCommentOptions(null);
     } catch (error) {
       console.error('Error deleting comment:', error);
       alert('Failed to delete comment');
     } finally {
-      setDeletingCommentId(null);
+      // Small delay to ensure state is clean
+      setTimeout(() => {
+        setDeletingCommentId(null);
+      }, 300);
     }
+  };
+
+  // Edit comment
+  const handleEditComment = (comment, e) => {
+    e.stopPropagation();
+    setEditingCommentId(comment._id);
+    setCommentText(comment.text); // Use main comment box
+    setShowCommentOptions(null);
+    if (commentInputRef.current) {
+      commentInputRef.current.focus();
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCommentId(null);
+    setEditingReplyData(null);
+    setCommentText('');
+  };
+
+  // Reply to comment
+  const handleReplyClick = (commentId, username) => {
+    setReplyingToCommentId(commentId);
+    setCommentText(`@${username} `);
+    // Focus main comment input
+    if (commentInputRef.current) {
+      commentInputRef.current.focus();
+    }
+  };
+
+  const handleCancelReply = () => {
+    setReplyingToCommentId(null);
+    setCommentText('');
+  };
+
+  // Edit reply
+  const handleEditReply = (commentId, reply, e) => {
+    e.stopPropagation();
+    setEditingReplyData({ commentId, replyId: reply._id });
+    setCommentText(reply.text); // Use main comment box
+    setShowReplyOptions(null);
+    if (commentInputRef.current) {
+      commentInputRef.current.focus();
+    }
+  };
+
+  const handleReplyOptionsClick = (replyId, e) => {
+    e.stopPropagation();
+    setShowReplyOptions(showReplyOptions === replyId ? null : replyId);
+  };
+
+  // Delete reply
+  const handleDeleteReply = async (commentId, replyId, e) => {
+    e.stopPropagation();
+    
+    console.log('🗑️ Attempting to delete reply:', {
+      postId: post._id,
+      commentId,
+      replyId,
+      currentUserId
+    });
+    
+    const confirmDelete = window.confirm('Are you sure you want to delete this reply?');
+    if (!confirmDelete) {
+      setShowReplyOptions(null);
+      return;
+    }
+
+    setShowReplyOptions(null);
+
+    try {
+      console.log('📡 Calling API deleteReply...');
+      const response = await postsAPI.deleteReply(post._id, commentId, replyId);
+      console.log('✅ Delete reply response:', response);
+      
+      // Update UI after successful deletion
+      setComments(prev => 
+        prev.map(c => {
+          if (c._id === commentId) {
+            console.log('Filtering replies for comment:', commentId);
+            return {
+              ...c,
+              replies: c.replies ? c.replies.filter(r => r._id !== replyId) : []
+            };
+          }
+          return c;
+        })
+      );
+      
+      console.log('✅ UI updated successfully');
+    } catch (error) {
+      console.error('❌ Error deleting reply:', error);
+      console.error('❌ Error response:', error.response);
+      console.error('❌ Error data:', error.response?.data);
+      console.error('❌ Status code:', error.response?.status);
+      
+      const errorMsg = error.response?.data?.message || error.message || 'Unknown error';
+      alert('Failed to delete reply: ' + errorMsg);
+    }
+  };
+
+  // Toggle replies visibility
+  const toggleReplies = (commentId) => {
+    setShowReplies(prev => ({
+      ...prev,
+      [commentId]: !prev[commentId]
+    }));
   };
 
   // Get post data
@@ -542,9 +801,20 @@ const PostCard = ({
             className="cursor-pointer" 
             onClick={() => navigateToUserProfile(postUser._id)}
           >
-            <h4 className="font-semibold text-gray-800 hover:text-blue-600 transition-colors">
-              @{postUser.username || 'user'}
-            </h4>
+            <div className="flex items-center gap-2">
+              <h4 className="font-semibold text-gray-800 hover:text-blue-600 transition-colors">
+                @{postUser.username || 'user'}
+              </h4>
+              {postUser.role && (
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  postUser.role === 'faculty' 
+                    ? 'bg-blue-100 text-blue-700' 
+                    : 'bg-green-100 text-green-700'
+                }`}>
+                  {postUser.role === 'faculty' ? 'Faculty' : 'Student'}
+                </span>
+              )}
+            </div>
             <span className="text-xs text-gray-500">
               {formatDate(postCreatedAt)}
             </span>
@@ -602,8 +872,8 @@ const PostCard = ({
         </div>
       </div>
 
-      {/* Media */}
-      {postMedia.length > 0 && (
+      {/* Media or Text Content */}
+      {postMedia.length > 0 ? (
         <div className="relative bg-black">
           {postMedia[currentMediaIndex]?.type === 'video' ? (
             <video 
@@ -658,7 +928,15 @@ const PostCard = ({
             </>
           )}
         </div>
-      )}
+      ) : postContent ? (
+        /* Text-only post - Simple white */
+        <div className="w-full bg-white p-6 min-h-[200px]">
+          {/* Text Content */}
+          <div className="text-gray-800 text-base leading-relaxed text-left">
+            {parseContentWithMentions(postContent)}
+          </div>
+        </div>
+      ) : null}
 
       {/* ✅ FIXED: Actions Section */}
       <div className="p-4 border-b border-gray-100">
@@ -729,45 +1007,67 @@ const PostCard = ({
           </button>
         </div>
         
-        {/* Show likes count */}
+        {/* Show likes count with top reactions */}
         <div className="mt-2">
           {likesCount > 0 && (
-            <div className="text-sm text-gray-700 font-medium">
-              {likesCount} {likesCount === 1 ? 'like' : 'likes'}
-            </div>
+            <button 
+              onClick={() => setShowLikesModal(true)}
+              className="flex items-center gap-2 text-sm text-gray-700 font-medium hover:text-blue-600 transition-colors cursor-pointer"
+            >
+              {getTopReactions().length > 0 && (
+                <div className="flex -space-x-1">
+                  {getTopReactions().map((emoji, idx) => (
+                    <span 
+                      key={idx} 
+                      className="inline-flex items-center justify-center w-5 h-5 bg-white rounded-full border border-gray-200 text-xs"
+                    >
+                      {emoji}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <span>{likesCount} {likesCount === 1 ? 'like' : 'likes'}</span>
+            </button>
           )}
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-4 border-b border-gray-100">
-        <div className="text-gray-800 text-base">
-          <span 
-            className="font-semibold text-gray-800 hover:text-blue-600 cursor-pointer transition-colors"
-            onClick={() => navigateToUserProfile(postUser._id)}
-          >
-            @{postUser.username || 'user'}
-          </span>
-          {' '}
-          <span className="leading-relaxed">
-            {parseContentWithMentions(postContent)}
-          </span>
-        </div>
-        
-        {postHashtags.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-3">
-            {postHashtags.map((tag, index) => (
+      {/* Caption Section - Only show for media posts with content or hashtags */}
+      {postMedia.length > 0 && (postContent || postHashtags.length > 0) && (
+        <div className="p-4 border-b border-gray-100">
+          {postContent && (
+            <div className="text-gray-800 text-base">
               <span 
-                key={index} 
-                className="text-blue-600 hover:text-blue-800 cursor-pointer font-medium"
-                onClick={() => navigate(`/search?q=${tag.replace('#', '')}`)}
+                className="font-semibold text-gray-800 hover:text-blue-600 cursor-pointer transition-colors"
+                onClick={() => navigateToUserProfile(postUser._id)}
               >
-                #{tag.replace('#', '')}
+                @{postUser.username || 'user'}
               </span>
-            ))}
-          </div>
-        )}
-      </div>
+              {' '}
+              <span className="leading-relaxed">
+                {parseContentWithMentions(postContent)}
+              </span>
+            </div>
+          )}
+          
+          {postHashtags.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {postHashtags.map((tag, index) => {
+                const cleanHashtag = tag.replace('#', '');
+                return (
+                  <span 
+                    key={index} 
+                    className="text-blue-600 hover:text-blue-800 cursor-pointer font-medium"
+                    onClick={() => navigate(`/hashtag/${cleanHashtag}`)}
+                  >
+                    #{cleanHashtag}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Comments */}
       <div className="p-4">
@@ -815,13 +1115,114 @@ const PostCard = ({
                         </span>
                         <span className="text-gray-800 break-words">
                           {commentText}
+                          {comment.isEdited && (
+                            <span className="text-xs text-gray-400 ml-2">(edited)</span>
+                          )}
                         </span>
                       </div>
-                      
-                      {comment.createdAt && (
-                        <span className="text-xs text-gray-500 mt-1 block">
-                          {formatDate(comment.createdAt)}
-                        </span>
+
+                      <div className="flex items-center gap-3 mt-1">
+                        {comment.createdAt && (
+                          <span className="text-xs text-gray-500">
+                            {formatDate(comment.createdAt)}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => handleReplyClick(commentId, commentUser.username)}
+                          className="text-xs text-blue-600 font-medium hover:text-blue-700"
+                        >
+                          Reply
+                        </button>
+                        {comment.replies && comment.replies.length > 0 && (
+                          <button
+                            onClick={() => toggleReplies(commentId)}
+                            className="text-xs text-gray-600 font-medium hover:text-gray-700"
+                          >
+                            {showReplies[commentId] ? 'Hide' : 'View'} {comment.replies.length} {comment.replies.length === 1 ? 'reply' : 'replies'}
+                          </button>
+                        )}
+                      </div>
+
+                          {/* Replies Section */}
+                      {showReplies[commentId] && comment.replies && comment.replies.length > 0 && (
+                        <div className="mt-3 space-y-2 pl-4 border-l-2 border-gray-200">
+                          {comment.replies.map((reply) => {
+                            const replyUser = reply.user || {};
+                            const isReplyOwner = replyUser._id === currentUserId;
+
+                            return (
+                              <div key={reply._id} className="flex gap-2 group relative">
+                                <img 
+                                  src={replyUser.profilePicture || replyUser.avatar || '/default-avatar.png'} 
+                                  alt={replyUser.username || 'User'}
+                                  className="w-6 h-6 rounded-full border border-gray-300 object-cover flex-shrink-0"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div>
+                                    <span className="font-semibold text-sm text-gray-800 mr-1">
+                                      @{replyUser.username || 'user'}
+                                    </span>
+                                    <span className="text-sm text-gray-700">
+                                      {reply.text}
+                                      {reply.isEdited && (
+                                        <span className="text-xs text-gray-400 ml-1">(edited)</span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    {reply.createdAt && (
+                                      <span className="text-xs text-gray-500">
+                                        {formatDate(reply.createdAt)}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Reply Options Menu */}
+                                {isReplyOwner && (
+                                  <>
+                                    <button 
+                                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100 self-start"
+                                      onClick={(e) => handleReplyOptionsClick(reply._id, e)}
+                                      title="Reply options"
+                                    >
+                                      <span className="text-sm">⋯</span>
+                                    </button>
+
+                                    {showReplyOptions === reply._id && (
+                                      <div 
+                                        className="absolute right-0 top-6 bg-white rounded-lg shadow-lg border border-gray-200 z-50 w-36"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <button
+                                          className="w-full px-4 py-2.5 text-left text-blue-600 hover:bg-blue-50 transition-colors text-xs font-medium"
+                                          onClick={(e) => handleEditReply(commentId, reply, e)}
+                                        >
+                                          Edit Reply
+                                        </button>
+                                        <button
+                                          className="w-full px-4 py-2.5 text-left text-red-600 hover:bg-red-50 transition-colors text-xs font-medium"
+                                          onClick={(e) => handleDeleteReply(commentId, reply._id, e)}
+                                        >
+                                          Delete Reply
+                                        </button>
+                                        <button
+                                          className="w-full px-4 py-2.5 text-left text-gray-700 hover:bg-gray-50 transition-colors text-xs font-medium"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowReplyOptions(null);
+                                          }}
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
 
@@ -840,6 +1241,12 @@ const PostCard = ({
                         className="absolute right-0 top-8 bg-white rounded-lg shadow-lg border border-gray-200 z-50 w-40"
                         onClick={(e) => e.stopPropagation()}
                       >
+                        <button
+                          className="w-full px-4 py-3 text-left text-blue-600 hover:bg-blue-50 transition-colors text-sm"
+                          onClick={(e) => handleEditComment(comment, e)}
+                        >
+                          Edit Comment
+                        </button>
                         <button
                           className="w-full px-4 py-3 text-left text-red-600 hover:bg-red-50 transition-colors text-sm"
                           onClick={(e) => handleDeleteComment(commentId, e)}
@@ -882,29 +1289,170 @@ const PostCard = ({
           </>
         )}
 
+        {/* Action indicator */}
+        {(replyingToCommentId || editingCommentId || editingReplyData) && (
+          <div className="mb-2 flex items-center justify-between bg-blue-50 px-4 py-2 rounded-lg">
+            <span className="text-sm text-blue-700">
+              {editingCommentId && (
+                <>✏️ Editing comment</>
+              )}
+              {editingReplyData && (
+                <>✏️ Editing reply</>
+              )}
+              {replyingToCommentId && !editingCommentId && !editingReplyData && (
+                <>💬 Replying to <span className="font-semibold">
+                  {comments.find(c => c._id === replyingToCommentId)?.user?.username || 'user'}
+                </span></>
+              )}
+            </span>
+            <button
+              onClick={() => {
+                handleCancelReply();
+                handleCancelEdit();
+              }}
+              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+        
         <form onSubmit={handleCommentSubmit} className="flex gap-2 mt-2">
           <input
             ref={commentInputRef}
             type="text"
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
-            placeholder="Add a comment..."
-            className="flex-1 border border-gray-300 rounded-full px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm text-gray-800 placeholder-gray-500"
+            placeholder={
+              editingCommentId ? "Edit your comment..." :
+              editingReplyData ? "Edit your reply..." :
+              replyingToCommentId ? "Write your reply..." : 
+              "Add a comment..."
+            }
+            className={`flex-1 border ${(replyingToCommentId || editingCommentId || editingReplyData) ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-300'} rounded-full px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm text-gray-800 placeholder-gray-500`}
             disabled={commentLoading}
           />
           <button 
             type="submit" 
             disabled={!commentText.trim() || commentLoading}
-            className={`px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium whitespace-nowrap flex items-center justify-center text-sm ${commentLoading ? 'opacity-70 cursor-wait' : !commentText.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`px-6 py-3 bg-red-700 text-white rounded-lg hover:bg-blue-900 transition font-medium whitespace-nowrap flex items-center justify-center text-sm shadow-lg ${commentLoading ? 'opacity-70 cursor-wait' : !commentText.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             {commentLoading ? (
               <span className="flex items-center justify-center">
                 <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
               </span>
-            ) : 'Post'}
+            ) : editingCommentId ? 'Save' : 
+              editingReplyData ? 'Save' :
+              replyingToCommentId ? 'Reply' : 'Post'}
           </button>
         </form>
       </div>
+
+      {/* ✅ Likes Modal - WhatsApp Style */}
+      {showLikesModal && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowLikesModal(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-800">Reactions</h3>
+              <button 
+                onClick={() => setShowLikesModal(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Top Reactions Summary */}
+            <div className="p-4 bg-gray-50 border-b border-gray-200">
+              <div className="flex items-center gap-4">
+                {(() => {
+                  const reactionCounts = {};
+                  post.likes.forEach(like => {
+                    const reaction = like.reaction || 'like';
+                    reactionCounts[reaction] = (reactionCounts[reaction] || 0) + 1;
+                  });
+                  
+                  return Object.entries(reactionCounts)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([type, count]) => {
+                      const emojiObj = emojis.find(e => e.type === type);
+                      return (
+                        <div key={type} className="flex items-center gap-1">
+                          <span className="text-xl">{emojiObj?.emoji || '👍'}</span>
+                          <span className="text-sm font-medium text-gray-700">{count}</span>
+                        </div>
+                      );
+                    });
+                })()}
+              </div>
+            </div>
+
+            {/* Users List */}
+            <div className="overflow-y-auto max-h-[50vh]">
+              {post.likes && post.likes.length > 0 ? (
+                post.likes.map((like, index) => {
+                  const likeUser = like.user || {};
+                  const reactionEmoji = getEmojiByType(like.reaction || 'like');
+                  
+                  return (
+                    <div 
+                      key={like._id || index}
+                      className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                      onClick={() => {
+                        setShowLikesModal(false);
+                        navigateToUserProfile(likeUser._id);
+                      }}
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        {/* User Avatar */}
+                        {likeUser.profilePicture || likeUser.avatar ? (
+                          <img 
+                            src={likeUser.profilePicture || likeUser.avatar} 
+                            alt={likeUser.name || likeUser.username}
+                            className="w-10 h-10 rounded-full object-cover"
+                            onError={(e) => {
+                              e.target.src = '/default-avatar.png';
+                              e.target.onerror = null;
+                            }}
+                          />
+                        ) : (
+                          <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold">
+                            {(likeUser.name || likeUser.username || 'U').charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        
+                        {/* User Info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-800 truncate">
+                            {likeUser.name || likeUser.username || 'Unknown User'}
+                          </p>
+                          <p className="text-sm text-gray-500 truncate">
+                            @{likeUser.username || 'user'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Reaction Emoji */}
+                      <div className="text-2xl ml-2">{reactionEmoji}</div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="p-8 text-center text-gray-500">
+                  No reactions yet
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

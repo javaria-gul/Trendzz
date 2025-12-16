@@ -32,6 +32,22 @@ export const postsAPI = {
   deleteComment: (postId, commentId) => 
     API.delete(`/posts/${postId}/comment/${commentId}`),
   
+  // ✅ ADDED: Edit comment
+  editComment: (postId, commentId, text) =>
+    API.put(`/posts/${postId}/comment/${commentId}`, { text }),
+  
+  // ✅ ADDED: Reply to comment
+  replyToComment: (postId, commentId, text) =>
+    API.post(`/posts/${postId}/comment/${commentId}/reply`, { text }),
+  
+  // ✅ ADDED: Delete reply
+  deleteReply: (postId, commentId, replyId) =>
+    API.delete(`/posts/${postId}/comment/${commentId}/reply/${replyId}`),
+  
+  // ✅ ADDED: Edit reply
+  editReply: (postId, commentId, replyId, text) =>
+    API.put(`/posts/${postId}/comment/${commentId}/reply/${replyId}`, { text }),
+  
   // Get posts by specific user
   getUserPosts: (userId, page = 1, limit = 10) => 
     API.get(`/posts/user/${userId}`, { params: { page, limit } }),

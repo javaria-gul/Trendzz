@@ -66,8 +66,8 @@ const OtherUserProfile = () => {
           // If blocked, we still want to get basic user info for display
           try {
             const response = await getUserProfile(userId);
-            if (response.data.success) {
-              setUserProfile(response.data.data);
+            if (response.success) {
+              setUserProfile(response.data);
             }
           } catch (error) {
             // If we can't fetch profile for blocked user, set minimal data
@@ -80,13 +80,13 @@ const OtherUserProfile = () => {
         // Normal profile fetch for unblocked users
         const response = await getUserProfile(userId);
 
-        if (response.data.success) {
-          const userData = response.data.data;
+        if (response.success) {
+          const userData = response.data;
           setUserProfile(userData);
           setIsFollowing(userData.isFollowing || false);
           setHasAdmired(userData.hasAdmired || false);
         } else {
-          setError(response.data.message || 'Failed to load user profile');
+          setError(response.message || 'Failed to load user profile');
         }
 
       } catch (error) {
@@ -113,16 +113,16 @@ const OtherUserProfile = () => {
     try {
       const response = await followUser(userId);
 
-      if (response.data.success) {
-        setIsFollowing(response.data.isFollowing);
+      if (response.success) {
+        setIsFollowing(response.isFollowing);
 
         setUserProfile(prev => ({
           ...prev,
-          followersCount: response.data.followersCount || prev.followersCount
+          followersCount: response.followersCount || prev.followersCount
         }));
 
         if (currentUser && updateUserData) {
-          const updatedFollowing = response.data.isFollowing
+          const updatedFollowing = response.isFollowing
             ? [...(currentUser.following || []), userId]
             : currentUser.following.filter(id => id !== userId);
 
@@ -132,9 +132,9 @@ const OtherUserProfile = () => {
           });
         }
 
-        console.log(response.data.message);
+        console.log(response.message);
       } else {
-        alert(response.data.message || 'Failed to follow user');
+        alert(response.message || 'Failed to follow user');
       }
     } catch (error) {
       console.error('Error following user:', error);
@@ -151,9 +151,9 @@ const OtherUserProfile = () => {
     try {
       console.log('🚫 Blocking user:', userId);
       const response = await blockUser(userId);
-      console.log('✅ Block response:', response.data);
+      console.log('✅ Block response:', response);
 
-      if (response.data.success) {
+      if (response.success) {
         setShowOptions(false);
         setShowBlockConfirm(false);
 
@@ -173,7 +173,7 @@ const OtherUserProfile = () => {
         setTimeout(() => setShowSuccessMessage(''), 3000);
 
       } else {
-        throw new Error(response.data.message || 'Failed to block user');
+        throw new Error(response.message || 'Failed to block user');
       }
     } catch (error) {
       console.error('Error blocking user:', error);
@@ -192,9 +192,9 @@ const OtherUserProfile = () => {
       console.log('🔓 Attempting to unblock user:', userId);
 
       const response = await unblockUser(userId);
-      console.log('✅ Unblock response:', response.data);
+      console.log('✅ Unblock response:', response);
 
-      if (response.data.success) {
+      if (response.success) {
         // Update current user's blocked list
         if (currentUser && updateUserData) {
           const updatedBlockedUsers = (currentUser.blockedUsers || []).filter(id =>
@@ -215,8 +215,8 @@ const OtherUserProfile = () => {
         try {
           console.log('🔄 Refreshing user profile after unblock...');
           const profileResponse = await getUserProfile(userId);
-          if (profileResponse.data.success) {
-            const userData = profileResponse.data.data;
+          if (profileResponse.success) {
+            const userData = profileResponse.data;
             setUserProfile(userData);
             setIsFollowing(userData.isFollowing || false);
             setHasAdmired(userData.hasAdmired || false);
@@ -231,7 +231,7 @@ const OtherUserProfile = () => {
         setShowSuccessMessage(`${userProfile?.name || 'User'} has been unblocked`);
         setTimeout(() => setShowSuccessMessage(''), 3000);
       } else {
-        throw new Error(response.data.message || 'Failed to unblock user');
+        throw new Error(response.message || 'Failed to unblock user');
       }
     } catch (error) {
       console.error('❌ Error unblocking user:', error);
@@ -274,17 +274,17 @@ const OtherUserProfile = () => {
     try {
       const response = await admireUser(userId);
 
-      if (response.data.success) {
-        setHasAdmired(response.data.hasAdmired);
+      if (response.success) {
+        setHasAdmired(response.hasAdmired);
 
         setUserProfile(prev => ({
           ...prev,
-          admirersCount: response.data.admirersCount || prev.admirersCount
+          admirersCount: response.admirersCount || prev.admirersCount
         }));
 
-        console.log(response.data.hasAdmired ? 'User admired successfully' : 'User unadmired successfully');
+        console.log(response.hasAdmired ? 'User admired successfully' : 'User unadmired successfully');
       } else {
-        alert(response.data.message || 'Failed to admire user');
+        alert(response.message || 'Failed to admire user');
       }
     } catch (error) {
       console.error('Error admiring user:', error);
@@ -304,8 +304,8 @@ const OtherUserProfile = () => {
 
       const response = await startChat(userId);
 
-      if (response.data.success) {
-        console.log('✅ Chat started successfully:', response.data.data._id);
+      if (response.success) {
+        console.log('✅ Chat started successfully:', response.data._id);
         // Use the new chat route
         navigate(`/chat/new/${userId}`);
       } else {

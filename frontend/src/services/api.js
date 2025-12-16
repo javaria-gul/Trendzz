@@ -48,8 +48,8 @@ API.interceptors.response.use(
       data: response.data
     });
     
-    // Return axios response object directly
-    return response;
+    // Return response.data directly so frontend can access it consistently
+    return response.data;
   },
   (error) => {
     console.error('❌ API Error:', {
@@ -171,7 +171,20 @@ export const postsAPI = {
   reactPost: (postId, type) => API.post(`/posts/${postId}/react`, { type }),
   
   // ✅ 11. commentPost - Alternative comment function
-  commentPost: (postId, text) => API.post(`/posts/${postId}/comment`, { text })
+  commentPost: (postId, text) => API.post(`/posts/${postId}/comment`, { text }),
+  
+  // ✅ 12. HASHTAG ENDPOINTS
+  getPostsByHashtag: (hashtag, page = 1, limit = 20) => 
+    API.get(`/hashtags/${hashtag}/posts`, { params: { page, limit } }),
+  
+  getHashtagStats: (hashtag) => 
+    API.get(`/hashtags/${hashtag}/stats`),
+  
+  getTrendingHashtags: (limit = 10, days = 7) => 
+    API.get('/hashtags/trending', { params: { limit, days } }),
+  
+  searchHashtags: (query, limit = 10) => 
+    API.get('/hashtags/search', { params: { q: query, limit } })
 };
 
 // ✅ AUTH API

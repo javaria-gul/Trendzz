@@ -140,45 +140,16 @@ const HomeFeed = () => {
       const response = await postsAPI.likePost(postId, reactionType);
       
       if (response && response.success) {
+        // ✅ Use backend response directly - no frontend calculation
         setPosts(prevPosts => 
           prevPosts.map(post => {
             if (post._id === postId) {
-              const currentUserLiked = post.likes?.some(like => {
-                if (typeof like === 'object' && like._id) {
-                  return like._id.toString() === userData._id.toString();
-                }
-                if (typeof like === 'object' && like.user) {
-                  return like.user._id?.toString() === userData._id.toString();
-                }
-                return like?.toString() === userData._id.toString();
-              });
-              
-              const newLikesCount = currentUserLiked 
-                ? Math.max(0, (post.likesCount || post.likes?.length || 1) - 1)
-                : (post.likesCount || post.likes?.length || 0) + 1;
-              
-              let newLikesArray = [...(post.likes || [])];
-              if (currentUserLiked) {
-                newLikesArray = newLikesArray.filter(
-                  like => {
-                    const likeId = typeof like === 'object' ? 
-                      (like._id || like.user?._id) : like;
-                    return likeId?.toString() !== userData._id.toString();
-                  }
-                );
-              } else {
-                newLikesArray.push({
-                  user: userData._id,
-                  reaction: reactionType,
-                  createdAt: new Date()
-                });
-              }
-              
               return {
                 ...post,
-                likes: newLikesArray,
-                likesCount: newLikesCount,
-                userReaction: reactionType
+                likes: response.likesList || [],
+                likesCount: response.likes || 0,
+                isLiked: response.isLiked,
+                userReaction: response.reactionType
               };
             }
             return post;

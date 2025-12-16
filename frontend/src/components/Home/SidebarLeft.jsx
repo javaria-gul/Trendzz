@@ -402,9 +402,25 @@ const SidebarLeft = () => {
         <ul className="flex flex-col items-center space-y-3 mt-2">
           {menu.map((item, index) => {
             const badgeCount = getBadgeCount(item);
-            const isActive = location.pathname === item.path || 
-              (item.label === "Search" && activeDropdown === 'search') ||
-              (item.label === "Notifications" && activeDropdown === 'notifications');
+            
+            // ✅ FIXED: Determine active state properly - only ONE button can be yellow at a time
+            let isActive = false;
+            
+            // Priority 1: Check if dropdown is open (for Search and Notifications)
+            if (item.label === "Search" && activeDropdown === 'search') {
+              isActive = true;
+            } else if (item.label === "Notifications" && activeDropdown === 'notifications') {
+              isActive = true;
+            }
+            // Priority 2: Check current page path (only if no dropdown is open)
+            else if (!activeDropdown && item.path !== "#" && item.path !== "/theme") {
+              // Exact match for paths
+              if (item.path === "/" && location.pathname === "/") {
+                isActive = true;
+              } else if (item.path !== "/" && location.pathname.startsWith(item.path)) {
+                isActive = true;
+              }
+            }
             
             return (
               <li
@@ -419,9 +435,14 @@ const SidebarLeft = () => {
                     ? 'bg-yellow-400 text-gray-900' 
                     : 'text-white hover:bg-yellow-400 hover:text-gray-900'
                   }
+                  focus:outline-none active:scale-95
                 `}
                 title={`${item.label}${badgeCount > 0 ? ` (${badgeCount})` : ''}`}
-                onClick={() => handleNavigation(item.path, item.label, item.onClick)}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  handleNavigation(item.path, item.label, item.onClick);
+                }}
+                onMouseDown={(e) => e.preventDefault()}
               >
                 {item.icon}
                 
@@ -452,8 +473,10 @@ const SidebarLeft = () => {
       {showCreatePostModal && (
         <CreatePostModal
           onClose={() => setShowCreatePostModal(false)}
-          onPostCreated={() => {
-            alert('Post created successfully!');
+          onPostCreated={(newPost) => {
+            setShowCreatePostModal(false);
+            // Refresh page to show new post in feed
+            window.location.reload();
           }}
         />
       )}

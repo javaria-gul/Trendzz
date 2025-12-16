@@ -235,7 +235,8 @@ export const registerUser = async (req, res) => {
         name: user.name,
         email: user.email,
         username: user.username || '',
-        profilePicture: user.profilePicture || '',
+        profilePicture: user.avatar || '/avatars/avatar1.png',
+        avatar: user.avatar || '/avatars/avatar1.png',
         firstLogin: user.firstLogin !== false
       }
     });
@@ -265,7 +266,8 @@ export const loginUser = async (req, res) => {
           name: user.name,
           email: user.email,
           username: user.username || '',
-          profilePicture: user.profilePicture || '',
+          profilePicture: user.avatar || '/avatars/avatar1.png',
+          avatar: user.avatar || '/avatars/avatar1.png',
           firstLogin: user.firstLogin !== false,
           blockedUsers: user.blockedUsers || []
         }
