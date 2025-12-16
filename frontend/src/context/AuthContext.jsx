@@ -16,22 +16,37 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(!!userToken);
   }, [userToken]);
 
-  const login = (token, user = null) => {
+// AuthContext.jsx - login function update
+
+const login = (token, user = null) => {
   localStorage.setItem("trendzz_token", token);
   if (user) {
-    // Ensure privacySettings exists in user data
-    const userWithPrivacy = {
-      ...user,
+    // Ensure all required fields exist with defaults
+    const completeUserData = {
+      name: user.name || '',
+      email: user.email || '',
+      username: user.username || '',
+      bio: user.bio || '',
+      avatar: user.avatar || '/avatars/avatar1.png',
+      coverImage: user.coverImage || '',
+      role: user.role || 'student',
+      semester: user.semester || '',
+      batch: user.batch || '',
+      subjects: user.subjects || [],
+      firstLogin: user.firstLogin !== undefined ? user.firstLogin : true,
       privacySettings: user.privacySettings || {
         showEmail: true,
         showFollowers: true,
         showFollowing: true,
         allowMessages: true,
         showOnlineStatus: true
-      }
+      },
+      blockedUsers: user.blockedUsers || [],
+      _id: user._id
     };
-    localStorage.setItem("trendzz_user", JSON.stringify(userWithPrivacy));
-    setUserData(userWithPrivacy);
+    
+    localStorage.setItem("trendzz_user", JSON.stringify(completeUserData));
+    setUserData(completeUserData);
   }
   setUserToken(token);
   setIsAuthenticated(true);

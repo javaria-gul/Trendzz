@@ -233,10 +233,15 @@ export const registerUser = async (req, res) => {
   }
 };
 
+// userController.js - loginUser function mein yeh fix karein:
+
+// userController.js - loginUser function ko original rakhein
+
 export const loginUser = async (req, res) => {
   const { email, password } = req.body;
 
   try {
+    // ✅ Password automatically select hoga
     const user = await User.findOne({ email });
 
     if (user && (await bcrypt.compare(password, user.password))) {
@@ -247,18 +252,17 @@ export const loginUser = async (req, res) => {
         name: user.name, 
         email: user.email, 
         firstLogin: user.firstLogin,
-        blockedUsers: user.blockedUsers || [], // Include blockedUsers in response
+        blockedUsers: user.blockedUsers || [],
         token 
       });
     } else {
       res.status(400).json({ message: "Invalid credentials" });
     }
   } catch (error) {
+    console.error("❌ Login error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
-
-// Get other user's profile
 // Get other user's profile - UPDATED TO INCLUDE PRIVACY SETTINGS
 export const getOtherUserProfile = async (req, res) => {
   try {
@@ -794,5 +798,7 @@ export const getFollowersList = async (req, res) => {
       success: false,
       message: "Server error while fetching followers list"
     });
+    
   }
+  
 };

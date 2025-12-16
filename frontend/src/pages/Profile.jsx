@@ -33,14 +33,69 @@ const Profile = () => {
   const [followingUsers, setFollowingUsers] = useState([]);
   const [followerUsers, setFollowerUsers] = useState([]);
   const [followLoading, setFollowLoading] = useState({});
+  const [successMessage, setSuccessMessage] = useState('');
   
   const fileInputRef = useRef(null);
   const coverInputRef = useRef(null);
   const modalRef = useRef(null);
 
+  // ========== ALL useEffect HOOKS AT THE START ==========
+  
+  // Fetch user data if missing
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        console.log("🔍 Checking user data...");
+        console.log("📊 Current userData:", userData);
+        
+        // If userData is missing or incomplete
+        if (!userData || !userData.name || !userData.username) {
+          console.log("🔄 Fetching user data from API...");
+          const response = await API.get('/auth/profile');
+          if (response.data.success) {
+            console.log("✅ Fetched user data:", response.data.user);
+            updateUserData(response.data.user);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+        
+        // Fallback to localStorage
+        const storedUser = localStorage.getItem("trendzz_user");
+        if (storedUser) {
+          const parsedUser = JSON.parse(storedUser);
+          console.log("📦 Loading user from localStorage:", parsedUser);
+          if (updateUserData) {
+            updateUserData(parsedUser);
+          }
+        }
+      }
+    };
+
+    fetchUserData();
+  }, []);
+
+  // Debug userData changes
+  useEffect(() => {
+    console.log("🔄 userData updated:", userData);
+    if (userData) {
+      console.log("📋 Available fields:", {
+        name: userData?.name,
+        username: userData?.username,
+        role: userData?.role,
+        semester: userData?.semester,
+        batch: userData?.batch,
+        bio: userData?.bio,
+        avatar: userData?.avatar,
+        coverImage: userData?.coverImage
+      });
+    }
+  }, [userData]);
+
   // Initialize form when userData changes
   useEffect(() => {
     if (userData) {
+      console.log("📝 Initializing edit form with userData:", userData);
       setEditForm({
         name: userData.name || '',
         bio: userData.bio || '',
@@ -103,6 +158,8 @@ const Profile = () => {
       document.body.style.overflow = 'unset';
     };
   }, [isEditing]);
+
+  // ========== HELPER FUNCTIONS ==========
 
   // Check if username can be changed (30 days cooldown)
   const canChangeUsername = () => {
@@ -181,18 +238,39 @@ const Profile = () => {
     
     try {
       setIsLoading(true);
-      console.log('🟡 Starting profile update with images...');
+      console.log('🟡 Starting profile update...');
+      console.log('🔍 Current userData:', userData);
+      console.log('🔍 Edit form data:', editForm);
+      
+      // ✅ VALIDATION
+      if (!editForm.name.trim()) {
+        alert('Please enter your name');
+        setIsLoading(false);
+        return;
+      }
+      
+      if (!editForm.username.trim()) {
+        alert('Please enter a username');
+        setIsLoading(false);
+        return;
+      }
       
       const formData = new FormData();
       
-      // Add text fields
-      formData.append('name', editForm.name);
-      formData.append('username', editForm.username);
-      formData.append('bio', editForm.bio);
-      formData.append('role', userData.role);
-      formData.append('semester', editForm.semester);
-      formData.append('batch', editForm.batch);
-      formData.append('subjects', JSON.stringify(editForm.subjects));
+      // Add text fields with proper values
+      formData.append('name', editForm.name.trim());
+      formData.append('username', editForm.username.trim());
+      formData.append('bio', editForm.bio || '');
+      formData.append('role', userData?.role || 'student');
+      formData.append('semester', editForm.semester || '');
+      formData.append('batch', editForm.batch || '');
+      formData.append('subjects', JSON.stringify(editForm.subjects || []));
+      
+      // Debug log form data
+      console.log('📦 Form Data to send:');
+      for (let [key, value] of formData.entries()) {
+        console.log(`📝 ${key}: ${value}`);
+      }
       
       // Add image files if they exist
       if (editForm.avatarFile) {
@@ -209,11 +287,12 @@ const Profile = () => {
       let response;
       let lastError;
       
+      // ✅ CORRECT ENDPOINTS - Try different possible endpoints
       const endpoints = [
+        '/api/users/profile-with-images',  // Most likely based on your routes
+        '/users/profile-with-images',
         '/api/auth/profile-with-images',
         '/auth/profile-with-images',
-        '/api/profile-with-images',
-        '/profile-with-images'
       ];
 
       for (const endpoint of endpoints) {
@@ -225,10 +304,14 @@ const Profile = () => {
             }
           });
           console.log(`✅ Success with endpoint: ${endpoint}`);
+          console.log('✅ API Response:', response.data);
           break;
         } catch (error) {
           lastError = error;
           console.log(`❌ Failed with endpoint: ${endpoint}`, error.response?.status);
+          if (error.response?.data) {
+            console.log('❌ Error details:', error.response.data);
+          }
           continue;
         }
       }
@@ -249,7 +332,14 @@ const Profile = () => {
         setTempAvatar(null);
         setTempCover(null);
         
-        alert('✅ Profile updated successfully!');
+        // ✅ Set success message
+        setSuccessMessage('✅ Profile updated successfully!');
+        
+        // Clear message after 3 seconds
+        setTimeout(() => {
+          setSuccessMessage('');
+        }, 3000);
+        
         setIsEditing(false);
       } else {
         throw new Error(response.data.message);
@@ -293,407 +383,395 @@ const Profile = () => {
     setIsUsernameAvailable(null);
   };
 
-// KEEP this one (around line 361) and REMOVE the duplicate inside FollowingModal
-
-// Handle follow/unfollow in modals - UPDATED VERSION
-const handleFollowInModal = async (userId, isCurrentlyFollowing, e) => {
-  if (e) {
-    e.preventDefault();
-    e.stopPropagation();
-  }
-
-  if (!userData) {
-    alert('Please login to follow users');
-    return;
-  }
-
-  setFollowLoading(prev => ({ ...prev, [userId]: true }));
-
-  try {
-    const response = await followUser(userId);
-    
-    if (response.data.success) {
-      // Update following users list
-      setFollowingUsers(prev => 
-        prev.map(user => {
-          if (user._id === userId) {
-            return {
-              ...user,
-              isFollowing: response.data.isFollowing
-            };
-          }
-          return user;
-        })
-      );
-
-      // Update followers list
-      setFollowerUsers(prev => 
-        prev.map(user => {
-          if (user._id === userId) {
-            return {
-              ...user,
-              isFollowing: response.data.isFollowing
-            };
-          }
-          return user;
-        })
-      );
-
-      // Update global user data WITH FOLLOWING COUNT
-      if (updateUserData) {
-        // Calculate new following count
-        const currentFollowing = userData.following || [];
-        let newFollowingCount = userData.followingCount || currentFollowing.length;
-        
-        if (response.data.isFollowing) {
-          // Follow action
-          newFollowingCount += 1;
-        } else {
-          // Unfollow action  
-          newFollowingCount = Math.max(0, newFollowingCount - 1);
-        }
-        
-        // Get updated following array
-        const updatedFollowing = response.data.isFollowing 
-          ? [...currentFollowing, userId]
-          : currentFollowing.filter(id => {
-              const followingId = typeof id === 'object' ? id._id : id;
-              return followingId?.toString() !== userId.toString();
-            });
-        
-        updateUserData({
-          ...userData,
-          following: updatedFollowing,
-          followingCount: newFollowingCount
-        });
-      }
-
-      console.log(response.data.isFollowing ? 'Followed successfully' : 'Unfollowed successfully');
-    } else {
-      alert(response.data.message || 'Failed to follow user');
+  // Handle follow/unfollow in modals
+  const handleFollowInModal = async (userId, isCurrentlyFollowing, e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
     }
-  } catch (error) {
-    console.error('Error following user:', error);
-    const errorMessage = error.response?.data?.message || 'Failed to follow user';
-    alert(errorMessage);
-  } finally {
-    setFollowLoading(prev => ({ ...prev, [userId]: false }));
-  }
-};
+
+    if (!userData) {
+      alert('Please login to follow users');
+      return;
+    }
+
+    setFollowLoading(prev => ({ ...prev, [userId]: true }));
+
+    try {
+      const response = await followUser(userId);
+      
+      if (response.data.success) {
+        // Update following users list
+        setFollowingUsers(prev => 
+          prev.map(user => {
+            if (user._id === userId) {
+              return {
+                ...user,
+                isFollowing: response.data.isFollowing
+              };
+            }
+            return user;
+          })
+        );
+
+        // Update followers list
+        setFollowerUsers(prev => 
+          prev.map(user => {
+            if (user._id === userId) {
+              return {
+                ...user,
+                isFollowing: response.data.isFollowing
+              };
+            }
+            return user;
+          })
+        );
+
+        // Update global user data
+        if (updateUserData) {
+          const currentFollowing = userData.following || [];
+          let newFollowingCount = userData.followingCount || currentFollowing.length;
+          
+          if (response.data.isFollowing) {
+            newFollowingCount += 1;
+          } else {
+            newFollowingCount = Math.max(0, newFollowingCount - 1);
+          }
+          
+          const updatedFollowing = response.data.isFollowing 
+            ? [...currentFollowing, userId]
+            : currentFollowing.filter(id => {
+                const followingId = typeof id === 'object' ? id._id : id;
+                return followingId?.toString() !== userId.toString();
+              });
+          
+          updateUserData({
+            ...userData,
+            following: updatedFollowing,
+            followingCount: newFollowingCount
+          });
+        }
+
+        console.log(response.data.isFollowing ? 'Followed successfully' : 'Unfollowed successfully');
+      } else {
+        alert(response.data.message || 'Failed to follow user');
+      }
+    } catch (error) {
+      console.error('Error following user:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to follow user';
+      alert(errorMessage);
+    } finally {
+      setFollowLoading(prev => ({ ...prev, [userId]: false }));
+    }
+  };
 
   // Followers Modal Component
-// Improved Followers Modal Component
-const FollowersModal = () => {
-  const [localFollowers, setLocalFollowers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const FollowersModal = () => {
+    const [localFollowers, setLocalFollowers] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchFollowers = async () => {
-      try {
-        setLoading(true);
-        const response = await getFollowersList(userData._id);
-        
-        if (response.data.success) {
-          console.log('✅ Followers fetched:', response.data.followers);
-          const processedFollowers = response.data.followers.map(follower => ({
-            ...follower,
-            isFollowing: userData.following?.some(followingUser => {
-              const followingId = typeof followingUser === 'object' ? followingUser._id : followingUser;
-              return followingId.toString() === follower._id.toString();
-            }) || false
-          }));
-          setLocalFollowers(processedFollowers);
-        } else {
-          // Fallback to existing data
+    useEffect(() => {
+      const fetchFollowers = async () => {
+        try {
+          setLoading(true);
+          const response = await getFollowersList(userData._id);
+          
+          if (response.data.success) {
+            console.log('✅ Followers fetched:', response.data.followers);
+            const processedFollowers = response.data.followers.map(follower => ({
+              ...follower,
+              isFollowing: userData.following?.some(followingUser => {
+                const followingId = typeof followingUser === 'object' ? followingUser._id : followingUser;
+                return followingId.toString() === follower._id.toString();
+              }) || false
+            }));
+            setLocalFollowers(processedFollowers);
+          } else {
+            setLocalFollowers(followerUsers);
+          }
+        } catch (error) {
+          console.error('Error fetching followers:', error);
           setLocalFollowers(followerUsers);
+        } finally {
+          setLoading(false);
         }
-      } catch (error) {
-        console.error('Error fetching followers:', error);
-        setLocalFollowers(followerUsers);
-      } finally {
-        setLoading(false);
+      };
+
+      if (showFollowersModal) {
+        fetchFollowers();
       }
-    };
+    }, [showFollowersModal, userData._id, userData.following, followerUsers]);
 
-    if (showFollowersModal) {
-      fetchFollowers();
-    }
-  }, [showFollowersModal, userData._id, userData.following, followerUsers]);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      onClick={() => setShowFollowersModal(false)}
-    >
+    return (
       <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        className="bg-white rounded-2xl p-6 max-w-md w-full mx-auto shadow-2xl max-h-96 overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        onClick={() => setShowFollowersModal(false)}
       >
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-bold text-gray-800">
-            Your Followers ({localFollowers.length || 0})
-          </h3>
-          <button
-            onClick={() => setShowFollowersModal(false)}
-            className="p-1 hover:bg-gray-100 rounded-full transition"
-          >
-            <X size={20} className="text-gray-500" />
-          </button>
-        </div>
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.9, opacity: 0 }}
+          className="bg-white rounded-2xl p-6 max-w-md w-full mx-auto shadow-2xl max-h-96 overflow-hidden flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold text-gray-800">
+              Your Followers ({localFollowers.length || 0})
+            </h3>
+            <button
+              onClick={() => setShowFollowersModal(false)}
+              className="p-1 hover:bg-gray-100 rounded-full transition"
+            >
+              <X size={20} className="text-gray-500" />
+            </button>
+          </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="flex justify-center items-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-700"></div>
-            </div>
-          ) : localFollowers.length > 0 ? (
-            <div className="space-y-3">
-              {localFollowers.map((follower) => (
-                <div
-                  key={follower._id}
-                  className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  <div 
-                    className="flex items-center gap-3 flex-1 cursor-pointer"
-                    onClick={() => {
-                      setShowFollowersModal(false);
-                      navigate(`/user/${follower._id}`);
-                    }}
+          <div className="flex-1 overflow-y-auto">
+            {loading ? (
+              <div className="flex justify-center items-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-700"></div>
+              </div>
+            ) : localFollowers.length > 0 ? (
+              <div className="space-y-3">
+                {localFollowers.map((follower) => (
+                  <div
+                    key={follower._id}
+                    className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors"
                   >
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white overflow-hidden border-2 border-white shadow">
-                      {follower.avatar ? (
-                        <img 
-                          src={follower.avatar} 
-                          alt={follower.name}
-                          className="w-full h-full rounded-full object-cover"
-                        />
-                      ) : (
-                        <User size={16} />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-800 truncate">
-                        {follower.name}
-                      </p>
-                      <p className="text-sm text-gray-500 truncate">
-                        @{follower.username}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  {userData && follower._id.toString() !== userData._id.toString() && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleFollowInModal(follower._id, follower.isFollowing, e);
+                    <div 
+                      className="flex items-center gap-3 flex-1 cursor-pointer"
+                      onClick={() => {
+                        setShowFollowersModal(false);
+                        navigate(`/user/${follower._id}`);
                       }}
-                      disabled={followLoading[follower._id]}
-                      className={`px-3 py-1 text-xs rounded-lg transition font-medium ${
-                        follower.isFollowing 
-                          ? 'bg-gray-500 text-white hover:bg-gray-600' 
-                          : 'bg-red-700 text-white hover:bg-blue-900'
-                      } ${followLoading[follower._id] ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      {followLoading[follower._id] ? (
-                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mx-auto"></div>
-                      ) : (
-                        follower.isFollowing ? 'Following' : 'Follow'
-                      )}
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <Users className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-gray-500">No followers yet</p>
-              <p className="text-sm text-gray-400 mt-1">
-                When someone follows you, they'll appear here
-              </p>
-            </div>
-          )}
-        </div>
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white overflow-hidden border-2 border-white shadow">
+                        {follower.avatar ? (
+                          <img 
+                            src={follower.avatar} 
+                            alt={follower.name}
+                            className="w-full h-full rounded-full object-cover"
+                          />
+                        ) : (
+                          <User size={16} />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-800 truncate">
+                          {follower.name}
+                        </p>
+                        <p className="text-sm text-gray-500 truncate">
+                          @{follower.username}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {userData && follower._id.toString() !== userData._id.toString() && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleFollowInModal(follower._id, follower.isFollowing, e);
+                        }}
+                        disabled={followLoading[follower._id]}
+                        className={`px-3 py-1 text-xs rounded-lg transition font-medium ${
+                          follower.isFollowing 
+                            ? 'bg-gray-500 text-white hover:bg-gray-600' 
+                            : 'bg-red-700 text-white hover:bg-blue-900'
+                        } ${followLoading[follower._id] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        {followLoading[follower._id] ? (
+                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mx-auto"></div>
+                        ) : (
+                          follower.isFollowing ? 'Following' : 'Follow'
+                        )}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <Users className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-500">No followers yet</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  When someone follows you, they'll appear here
+                </p>
+              </div>
+            )}
+          </div>
+        </motion.div>
       </motion.div>
-    </motion.div>
-  );
-};
+    );
+  };
 
   // Following Modal Component
-// Fixed Following Modal Component
-const FollowingModal = () => {
-  const [localFollowing, setLocalFollowing] = useState([]);
-  const [loading, setLoading] = useState(true);
-  // const [followLoading, setFollowLoading] = useState({});
+  const FollowingModal = () => {
+    const [localFollowing, setLocalFollowing] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-  // Fetch following users with proper data
-  useEffect(() => {
-    const fetchFollowingUsers = async () => {
-      try {
-        setLoading(true);
-        
-        // Use the new function you added to user.js service
-        const response = await getFollowingList(userData._id);
-        
-        if (response.data.success) {
-          console.log('✅ Following users fetched:', response.data.following);
+    useEffect(() => {
+      const fetchFollowingUsers = async () => {
+        try {
+          setLoading(true);
           
-          const processedUsers = response.data.following.map(user => ({
-            _id: user._id,
-            name: user.name || 'User',
-            username: user.username || 'username',
-            avatar: user.avatar || null,
-            bio: user.bio || '',
-            role: user.role || '',
-            isFollowing: true // Since these are users you're following
-          }));
+          const response = await getFollowingList(userData._id);
           
-          setLocalFollowing(processedUsers);
-        } else {
-          console.error('Failed to fetch following list');
-          // Fallback to existing processed data
+          if (response.data.success) {
+            console.log('✅ Following users fetched:', response.data.following);
+            
+            const processedUsers = response.data.following.map(user => ({
+              _id: user._id,
+              name: user.name || 'User',
+              username: user.username || 'username',
+              avatar: user.avatar || null,
+              bio: user.bio || '',
+              role: user.role || '',
+              isFollowing: true
+            }));
+            
+            setLocalFollowing(processedUsers);
+          } else {
+            console.error('Failed to fetch following list');
+            if (followingUsers && followingUsers.length > 0) {
+              setLocalFollowing(followingUsers);
+            } else {
+              setLocalFollowing([]);
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching following users:', error);
           if (followingUsers && followingUsers.length > 0) {
             setLocalFollowing(followingUsers);
           } else {
             setLocalFollowing([]);
           }
+        } finally {
+          setLoading(false);
         }
-      } catch (error) {
-        console.error('Error fetching following users:', error);
-        // Fallback to existing processed data
-        if (followingUsers && followingUsers.length > 0) {
-          setLocalFollowing(followingUsers);
-        } else {
-          setLocalFollowing([]);
-        }
-      } finally {
-        setLoading(false);
+      };
+
+      if (showFollowingModal) {
+        fetchFollowingUsers();
       }
-    };
+    }, [showFollowingModal]);
 
-    if (showFollowingModal) {
-      fetchFollowingUsers();
-    }
-  }, [showFollowingModal]);
+    const actualCount = localFollowing.length;
 
-  // Get actual count
-  const actualCount = localFollowing.length;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      onClick={() => setShowFollowingModal(false)}
-    >
+    return (
       <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        className="bg-white rounded-2xl p-6 max-w-md w-full mx-auto shadow-2xl max-h-96 overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        onClick={() => setShowFollowingModal(false)}
       >
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-bold text-gray-800">
-            You're Following ({actualCount})
-          </h3>
-          <button
-            onClick={() => setShowFollowingModal(false)}
-            className="p-1 hover:bg-gray-100 rounded-full transition"
-          >
-            <X size={20} className="text-gray-500" />
-          </button>
-        </div>
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.9, opacity: 0 }}
+          className="bg-white rounded-2xl p-6 max-w-md w-full mx-auto shadow-2xl max-h-96 overflow-hidden flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold text-gray-800">
+              You're Following ({actualCount})
+            </h3>
+            <button
+              onClick={() => setShowFollowingModal(false)}
+              className="p-1 hover:bg-gray-100 rounded-full transition"
+            >
+              <X size={20} className="text-gray-500" />
+            </button>
+          </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="flex justify-center items-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-700"></div>
-            </div>
-          ) : localFollowing.length > 0 ? (
-            <div className="space-y-3">
-              {localFollowing.map((followingUser) => (
-                <div
-                  key={followingUser._id}
-                  className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  <div 
-                    className="flex items-center gap-3 flex-1 cursor-pointer"
-                    onClick={() => {
-                      setShowFollowingModal(false);
-                      if (followingUser._id && !followingUser._id.startsWith('temp-')) {
-                        navigate(`/user/${followingUser._id}`);
-                      }
-                    }}
+          <div className="flex-1 overflow-y-auto">
+            {loading ? (
+              <div className="flex justify-center items-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-700"></div>
+              </div>
+            ) : localFollowing.length > 0 ? (
+              <div className="space-y-3">
+                {localFollowing.map((followingUser) => (
+                  <div
+                    key={followingUser._id}
+                    className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors"
                   >
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white overflow-hidden border-2 border-white shadow">
-                      {followingUser.avatar ? (
-                        <img 
-                          src={followingUser.avatar} 
-                          alt={followingUser.name}
-                          className="w-full h-full rounded-full object-cover"
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                          }}
-                        />
-                      ) : (
-                        <User size={16} />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-800 truncate">
-                        {followingUser.name}
-                      </p>
-                      <p className="text-sm text-gray-500 truncate">
-                        @{followingUser.username}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  {userData && followingUser._id && followingUser._id.toString() !== userData._id.toString() && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleFollowInModal(followingUser._id, followingUser.isFollowing, e);
+                    <div 
+                      className="flex items-center gap-3 flex-1 cursor-pointer"
+                      onClick={() => {
+                        setShowFollowingModal(false);
+                        if (followingUser._id && !followingUser._id.startsWith('temp-')) {
+                          navigate(`/user/${followingUser._id}`);
+                        }
                       }}
-                      disabled={followLoading[followingUser._id]}
-                      className={`px-3 py-1 text-xs rounded-lg transition font-medium ${
-                        followingUser.isFollowing 
-                          ? 'bg-red-700 text-white hover:bg-red-700' 
-                          : 'bg-red-700 text-white hover:bg-blue-900'
-                      } ${followLoading[followingUser._id] ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      {followLoading[followingUser._id] ? (
-                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mx-auto"></div>
-                      ) : (
-                        followingUser.isFollowing ? 'Following' : 'Follow'
-                      )}
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <Users className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-gray-500">Not following anyone yet</p>
-              <p className="text-sm text-gray-400 mt-1">
-                When you follow someone, they'll appear here
-              </p>
-            </div>
-          )}
-        </div>
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white overflow-hidden border-2 border-white shadow">
+                        {followingUser.avatar ? (
+                          <img 
+                            src={followingUser.avatar} 
+                            alt={followingUser.name}
+                            className="w-full h-full rounded-full object-cover"
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <User size={16} />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-800 truncate">
+                          {followingUser.name}
+                        </p>
+                        <p className="text-sm text-gray-500 truncate">
+                          @{followingUser.username}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {userData && followingUser._id && followingUser._id.toString() !== userData._id.toString() && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleFollowInModal(followingUser._id, followingUser.isFollowing, e);
+                        }}
+                        disabled={followLoading[followingUser._id]}
+                        className={`px-3 py-1 text-xs rounded-lg transition font-medium ${
+                          followingUser.isFollowing 
+                            ? 'bg-red-700 text-white hover:bg-red-700' 
+                            : 'bg-red-700 text-white hover:bg-blue-900'
+                        } ${followLoading[followingUser._id] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        {followLoading[followingUser._id] ? (
+                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mx-auto"></div>
+                        ) : (
+                          followingUser.isFollowing ? 'Following' : 'Follow'
+                        )}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <Users className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-500">Not following anyone yet</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  When you follow someone, they'll appear here
+                </p>
+              </div>
+            )}
+          </div>
+        </motion.div>
       </motion.div>
-    </motion.div>
-  );
-};
+    );
+  };
+
+  // ========== RENDER LOGIC ==========
+
   if (!userData) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -711,11 +789,27 @@ const FollowingModal = () => {
   const bioCharsCount = editForm.bio ? editForm.bio.length : 0;
   const maxChars = 60;
   const followersCount = followerUsers.length || 0;
-  // Around line 700, update followingCount:
-const followingCount = userData?.followingCount || userData?.following?.length || 0;
+  const followingCount = userData?.followingCount || userData?.following?.length || 0;
 
   return (
     <div className="min-h-screen bg-gray-50 py-4 sm:py-6">
+      {/* ✅ Success Message Component */}
+      <AnimatePresence>
+        {successMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50"
+          >
+            <div className="bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2">
+              <CheckCircle size={20} />
+              <span className="font-medium">{successMessage}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {showFollowersModal && <FollowersModal />}
       </AnimatePresence>

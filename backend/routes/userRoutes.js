@@ -7,10 +7,21 @@ import {
   debugPrivacySettings, 
   updateUserPrivacy,
   getFollowingList,
-  getFollowersList
+  getFollowersList,
+  updateUserProfileWithImages,
+  upload 
 } from "../controllers/userController.js";
 
 const router = express.Router();
+// Add this route for profile update with images
+router.put('/profile-with-images', 
+  requireAuth,
+  upload.fields([
+    { name: 'avatar', maxCount: 1 },
+    { name: 'coverImage', maxCount: 1 }
+  ]),
+  updateUserProfileWithImages
+);
 
 // In userRoutes.js - UPDATE the /recommendations route with improved logic:
 
