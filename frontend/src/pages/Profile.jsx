@@ -42,9 +42,27 @@ const Profile = () => {
   const [followerUsers, setFollowerUsers] = useState([]);
   const [followLoading, setFollowLoading] = useState({});
   
+  // NEW: Notification state
+  const [notification, setNotification] = useState({
+    show: false,
+    message: '',
+    type: 'success' // 'success' or 'error'
+  });
+
   const fileInputRef = useRef(null);
   const coverInputRef = useRef(null);
   const modalRef = useRef(null);
+
+  // NEW: Auto-hide notification
+  useEffect(() => {
+    if (notification.show) {
+      const timer = setTimeout(() => {
+        setNotification({ show: false, message: '', type: 'success' });
+      }, 3000); // 3 seconds
+
+      return () => clearTimeout(timer);
+    }
+  }, [notification.show]);
 
   // Initialize form when userData changes
   useEffect(() => {
@@ -181,12 +199,22 @@ const Profile = () => {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file (JPG, PNG, etc.)');
+      // UPDATED: Alert ki jagah notification show karna
+      setNotification({
+        show: true,
+        message: 'Please select an image file (JPG, PNG, etc.)',
+        type: 'error'
+      });
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('Image size should be less than 5MB');
+      // UPDATED: Alert ki jagah notification show karna
+      setNotification({
+        show: true,
+        message: 'Image size should be less than 5MB',
+        type: 'error'
+      });
       return;
     }
 
@@ -210,7 +238,12 @@ const Profile = () => {
       console.log(`✅ ${type} image selected for upload`);
     } catch (error) {
       console.error(`Error reading ${type} image:`, error);
-      alert(`Failed to process ${type} image`);
+      // UPDATED: Alert ki jagah notification show karna
+      setNotification({
+        show: true,
+        message: `Failed to process ${type} image`,
+        type: 'error'
+      });
     }
   };
 
@@ -268,7 +301,13 @@ const Profile = () => {
         setTempAvatar(null);
         setTempCover(null);
         
-        alert('✅ Profile updated successfully!');
+        // UPDATED: Alert ki jagah notification show karna
+        setNotification({
+          show: true,
+          message: 'Profile updated successfully!',
+          type: 'success'
+        });
+        
         setIsEditing(false);
       } else {
         // If success is false
@@ -290,7 +329,12 @@ const Profile = () => {
         errorMessage = error.message;
       }
       
-      alert('Error: ' + errorMessage);
+      // UPDATED: Alert ki jagah notification show karna
+      setNotification({
+        show: true,
+        message: errorMessage,
+        type: 'error'
+      });
     } finally {
       setIsLoading(false);
     }
@@ -325,7 +369,12 @@ const handleFollowInModal = async (userId, isCurrentlyFollowing, e) => {
   }
 
   if (!userData) {
-    alert('Please login to follow users');
+    // UPDATED: Alert ki jagah notification show karna
+    setNotification({
+      show: true,
+      message: 'Please login to follow users',
+      type: 'error'
+    });
     return;
   }
 
@@ -392,12 +441,22 @@ const handleFollowInModal = async (userId, isCurrentlyFollowing, e) => {
 
       console.log(response.data.isFollowing ? 'Followed successfully' : 'Unfollowed successfully');
     } else {
-      alert(response.data.message || 'Failed to follow user');
+      // UPDATED: Alert ki jagah notification show karna
+      setNotification({
+        show: true,
+        message: response.data.message || 'Failed to follow user',
+        type: 'error'
+      });
     }
   } catch (error) {
     console.error('Error following user:', error);
     const errorMessage = error.response?.data?.message || 'Failed to follow user';
-    alert(errorMessage);
+    // UPDATED: Alert ki jagah notification show karna
+    setNotification({
+      show: true,
+      message: errorMessage,
+      type: 'error'
+    });
   } finally {
     setFollowLoading(prev => ({ ...prev, [userId]: false }));
   }
@@ -738,6 +797,27 @@ const followingCount = userData?.followingCount || userData?.following?.length |
 
   return (
     <div className="min-h-screen bg-gray-50 py-4 sm:py-6">
+      {/* NEW: Notification Component */}
+      <AnimatePresence>
+        {notification.show && (
+          <motion.div
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] px-6 py-3 rounded-lg shadow-lg ${
+              notification.type === 'success' 
+                ? 'bg-green-500 text-white' 
+                : 'bg-red-500 text-white'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <CheckCircle size={18} />
+              <p className="font-medium">{notification.message}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {showFollowersModal && <FollowersModal />}
       </AnimatePresence>
