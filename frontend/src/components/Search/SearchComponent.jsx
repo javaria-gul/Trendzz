@@ -23,11 +23,17 @@ const SearchComponent = ({ mode = "profile", onUserSelect }) => {
       setIsLoading(true);
       try {
         const response = await searchUsers(query);
-        setResults(response.data);
+        
+        // Handle response - API interceptor returns response.data already
+        // So response = { success: true, data: [...users] }
+        const users = Array.isArray(response?.data) ? response.data : [];
+        
+        setResults(users);
         setShowResults(true);
       } catch (error) {
         console.error('Search error:', error);
         setResults([]);
+        setShowResults(true);
       } finally {
         setIsLoading(false);
       }
@@ -103,6 +109,9 @@ const SearchComponent = ({ mode = "profile", onUserSelect }) => {
             </div>
           ) : results.length > 0 ? (
             <div className="py-2">
+              <div className="px-4 py-2 text-xs text-green-600 bg-green-50">
+                Found {results.length} user(s)
+              </div>
               {results.map((user) => (
                 <button
                   key={user._id}
@@ -110,19 +119,23 @@ const SearchComponent = ({ mode = "profile", onUserSelect }) => {
                   className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center justify-between transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white">
-                      {user.avatar ? (
-                        <img 
-                          src={user.avatar} 
-                          alt={user.name}
-                          className="w-full h-full rounded-full object-cover"
-                        />
-                      ) : (
+                    {(user.profilePicture || user.avatar) ? (
+                      <img 
+                        src={user.profilePicture || user.avatar} 
+                        alt={user.name || user.username}
+                        className="w-10 h-10 rounded-full object-cover border-2 border-gray-200"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = '/default-avatar.png';
+                        }}
+                      />
+                    ) : (
+                      <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold">
                         <User size={20} />
-                      )}
-                    </div>
+                      </div>
+                    )}
                     <div>
-                      <p className="font-semibold text-gray-800">{user.name}</p>
+                      <p className="font-semibold text-gray-800">{user.name || user.username}</p>
                       <p className="text-sm text-gray-500">@{user.username}</p>
                     </div>
                   </div>

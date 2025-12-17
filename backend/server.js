@@ -41,9 +41,11 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
+import hashtagRoutes from "./routes/hashtagRoutes.js";
 app.use("/api/auth", authRoutes);
 app.use("/api/posts", postRoutes);  // ✅ Post routes should be before userRoutes if they have similar patterns
 app.use("/api/users", userRoutes);
+app.use("/api/hashtags", hashtagRoutes);  // ✅ Hashtag routes
 app.use("/api", chatRoutes);   // ✅ Better to prefix with /api/chat
 
 // ✅ Home Route

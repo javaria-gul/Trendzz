@@ -1,8 +1,9 @@
 // src/components/Home/CreatePostModal.jsx - COMPLETE FIXED VERSION
-import React, { useState, useRef, useContext } from 'react';
+import React, { useState, useRef, useContext, useEffect } from 'react';
 import { postsAPI } from '../../services/api';
 import { AuthContext } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { Hash } from 'lucide-react';
 
 const CreatePostModal = ({ onClose, onPostCreated }) => {
   const [content, setContent] = useState('');
@@ -13,15 +14,20 @@ const CreatePostModal = ({ onClose, onPostCreated }) => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState('');
+  const [hashtagSuggestions, setHashtagSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [currentHashtag, setCurrentHashtag] = useState(null); // null = not typing hashtag, '' = just typed #
+  const [cursorPosition, setCursorPosition] = useState(0);
   const fileInputRef = useRef(null);
+  const textareaRef = useRef(null);
   const { userData } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const handleFileChange = (e) => {
     const selectedFiles = Array.from(e.target.files);
     
-    if (files.length + selectedFiles.length > 10) {
-      alert('Maximum 10 files allowed');
+    if (files.length + selectedFiles.length > 5) {
+      alert('Maximum 5 files allowed');
       return;
     }
 
@@ -29,7 +35,7 @@ const CreatePostModal = ({ onClose, onPostCreated }) => {
     selectedFiles.forEach(file => {
       const isImage = file.type.startsWith('image/');
       const isVideo = file.type.startsWith('video/');
-      const maxSize = isImage ? 10 * 1024 * 1024 : 50 * 1024 * 1024;
+      const maxSize = isImage ? 50 * 1024 * 1024 : 100 * 1024 * 1024;
       
       if (!isImage && !isVideo) {
         alert(`${file.name} is not an image or video`);
@@ -37,7 +43,7 @@ const CreatePostModal = ({ onClose, onPostCreated }) => {
       }
       
       if (file.size > maxSize) {
-        alert(`${file.name} exceeds ${isImage ? '10MB' : '50MB'} limit`);
+        alert(`${file.name} exceeds ${isImage ? '50MB' : '100MB'} limit`);
         return;
       }
       
@@ -85,6 +91,7 @@ const CreatePostModal = ({ onClose, onPostCreated }) => {
     
     console.log('🔑 Token exists:', !!token);
     
+    // ✅ Allow either content or media (or both)
     if (files.length === 0 && !content.trim()) {
       setError('Please add some content or media');
       alert('Please add some content or media');
@@ -120,7 +127,14 @@ const CreatePostModal = ({ onClose, onPostCreated }) => {
       if (response && response.success) {
         console.log('🎉 Post created successfully:', response.post);
         alert('Post created successfully!');
-        if (onPostCreated) onPostCreated(response.post);
+        // Pass the full post with user data for real-time feed update
+        if (onPostCreated) {
+          const postWithUser = {
+            ...response.post,
+            user: userData || response.post.user
+          };
+          onPostCreated(postWithUser);
+        }
         if (onClose) onClose();
       } else {
         console.error('❌ Server error:', response?.message);
@@ -131,7 +145,11 @@ const CreatePostModal = ({ onClose, onPostCreated }) => {
       console.error('❌ Catch block error:', error);
       
       let errorMessage = 'Failed to create post';
-      if (error.message) {
+      
+      // Check for moderation error (403)
+      if (error.response?.status === 403) {
+        errorMessage = '⚠️ Your text violates community guidelines';
+      } else if (error.message) {
         errorMessage = error.message;
       } else if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
@@ -155,6 +173,100 @@ const CreatePostModal = ({ onClose, onPostCreated }) => {
   const extractHashtags = () => {
     const tags = content.match(/#\w+/g) || [];
     setHashtags(tags.join(','));
+  };
+
+  // ✨ Hashtag autocomplete - Only shows when user types #
+  useEffect(() => {
+    const fetchHashtagSuggestions = async () => {
+      // Only show if user has typed # (currentHashtag is not null)
+      if (currentHashtag === null) {
+        setHashtagSuggestions([]);
+        setShowSuggestions(false);
+        return;
+      }
+
+      // If user just typed # (no characters after), show trending
+      if (currentHashtag.length === 0) {
+        try {
+          const trending = await postsAPI.getTrendingHashtags(8, 7);
+          if (trending.success && trending.trending && trending.trending.length > 0) {
+            setHashtagSuggestions(trending.trending);
+            setShowSuggestions(true);
+          } else {
+            setHashtagSuggestions([]);
+            setShowSuggestions(false);
+          }
+        } catch (error) {
+          console.error('Error fetching trending hashtags:', error);
+          setHashtagSuggestions([]);
+          setShowSuggestions(false);
+        }
+        return;
+      }
+
+      // If user is typing, search for matching hashtags
+      try {
+        const suggestions = await postsAPI.searchHashtags(currentHashtag, 8);
+        if (suggestions && suggestions.length > 0) {
+          setHashtagSuggestions(suggestions);
+          setShowSuggestions(true);
+        } else {
+          // No matches - hide dropdown
+          setHashtagSuggestions([]);
+          setShowSuggestions(false);
+        }
+      } catch (error) {
+        console.error('Error fetching hashtag suggestions:', error);
+        setHashtagSuggestions([]);
+        setShowSuggestions(false);
+      }
+    };
+
+    const debounceTimer = setTimeout(fetchHashtagSuggestions, 300);
+    return () => clearTimeout(debounceTimer);
+  }, [currentHashtag]);
+
+  const handleContentChange = (e) => {
+    const newContent = e.target.value;
+    setContent(newContent);
+    
+    const cursorPos = e.target.selectionStart;
+    setCursorPosition(cursorPos);
+    
+    // Check if user is typing a hashtag
+    const textBeforeCursor = newContent.substring(0, cursorPos);
+    const hashtagMatch = textBeforeCursor.match(/#(\w*)$/);
+    
+    if (hashtagMatch) {
+      // User typed #, set the text after #
+      setCurrentHashtag(hashtagMatch[1]);
+    } else {
+      // No # found, hide suggestions
+      setCurrentHashtag(null);
+      setShowSuggestions(false);
+    }
+  };
+
+  const insertHashtag = (hashtag) => {
+    const textBeforeCursor = content.substring(0, cursorPosition);
+    const textAfterCursor = content.substring(cursorPosition);
+    
+    // Remove the partial hashtag and insert the full one
+    const beforeHashtag = textBeforeCursor.replace(/#\w*$/, '');
+    const newContent = `${beforeHashtag}#${hashtag} ${textAfterCursor}`;
+    
+    setContent(newContent);
+    setShowSuggestions(false);
+    setCurrentHashtag('');
+    
+    // Focus back on textarea
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursorPos = beforeHashtag.length + hashtag.length + 2;
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
   };
 
   return (
@@ -207,17 +319,64 @@ const CreatePostModal = ({ onClose, onPostCreated }) => {
 
         {/* Content Area */}
         <form onSubmit={handleSubmit} className="overflow-y-auto max-h-[60vh]">
-          {/* Text Area - ✅ FIXED TEXT COLOR */}
-          <div className="p-4">
+          {/* Text Area with Blue Hashtags - Simple */}
+          <div className="p-4 relative">
+            {/* Styled text layer (behind) */}
+            <div 
+              className="absolute top-4 left-4 right-4 text-lg leading-relaxed pointer-events-none whitespace-pre-wrap break-words"
+              style={{ 
+                minHeight: '120px',
+                color: 'transparent',
+                zIndex: 1
+              }}
+            >
+              {content.split(/(\s+)/).map((word, i) => {
+                if (word.match(/^#\w+/)) {
+                  return <span key={i} style={{ color: '#2563eb', fontWeight: 500 }}>{word}</span>;
+                }
+                return <span key={i} style={{ color: '#1f2937' }}>{word}</span>;
+              })}
+            </div>
+
+            {/* Actual textarea (on top, transparent text) */}
             <textarea
+              ref={textareaRef}
               value={content}
-              onChange={(e) => setContent(e.target.value)}
+              onChange={handleContentChange}
               onKeyUp={extractHashtags}
-              placeholder="What's on your mind?"
-              className="w-full border-none focus:outline-none text-lg resize-none min-h-[120px] disabled:bg-gray-100 text-gray-800 placeholder-gray-500" // ✅ text-gray-800 added
+              placeholder="What's on your mind? Use #hashtags to reach more people"
+              className="relative w-full border-none focus:outline-none text-lg resize-none min-h-[120px] disabled:bg-gray-100 placeholder-gray-500 bg-transparent"
+              style={{
+                color: 'transparent',
+                caretColor: '#1f2937',
+                zIndex: 2
+              }}
               rows="4"
               disabled={isUploading}
             />
+
+            {/* ✨ Hashtag Suggestions Dropdown */}
+            {showSuggestions && (
+              <div className="absolute left-4 top-full mt-2 bg-white border border-gray-200 rounded-xl shadow-xl z-50 w-96 max-h-56 overflow-hidden">
+                <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                  <Hash size={16} className="text-blue-600" />
+                  <span className="text-sm font-semibold text-gray-700">Trending hashtags</span>
+                </div>
+                <div className="overflow-y-auto max-h-48">
+                  {hashtagSuggestions.map((suggestion, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => insertHashtag(suggestion.hashtag)}
+                      className="w-full text-left px-4 py-2.5 hover:bg-blue-50 flex items-center justify-between transition-colors group"
+                    >
+                      <span className="text-blue-600 font-semibold group-hover:text-blue-700">#{suggestion.hashtag}</span>
+                      <span className="text-xs text-gray-500">{suggestion.count} {suggestion.count === 1 ? 'post' : 'posts'}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             
             {/* Hashtags Preview */}
             {hashtags && (
@@ -277,7 +436,7 @@ const CreatePostModal = ({ onClose, onPostCreated }) => {
             <div className="p-4 border-t">
               <div className="w-full bg-gray-200 rounded-full h-2.5">
                 <div 
-                  className="bg-blue-500 h-2.5 rounded-full transition-all duration-300"
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
                   style={{ width: `${uploadProgress}%` }}
                 ></div>
               </div>
@@ -328,10 +487,10 @@ const CreatePostModal = ({ onClose, onPostCreated }) => {
                 <button
                   type="submit"
                   disabled={isUploading || (files.length === 0 && !content.trim())}
-                  className={`px-6 py-2 rounded-full font-semibold transition-all ${
+                  className={`px-6 py-2 rounded-lg font-medium transition ${
                     isUploading || (files.length === 0 && !content.trim())
-                      ? 'bg-blue-200 text-blue-400 cursor-not-allowed'
-                      : 'bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700'
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-50'
+                      : 'bg-red-700 text-white hover:bg-blue-900'
                   }`}
                 >
                   {isUploading ? (

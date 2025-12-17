@@ -28,7 +28,7 @@ router.get("/search", requireAuth, async (req, res) => {
       ],
       _id: { $ne: req.user._id }
     })
-    .select("name username avatar role onlineStatus")
+    .select("name username avatar profilePicture role onlineStatus")
     .limit(20)
     .lean();
 

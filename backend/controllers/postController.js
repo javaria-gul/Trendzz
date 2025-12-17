@@ -3,6 +3,7 @@ import User from "../models/User.js";
 import cloudinary from '../config/cloudinary.js';
 import streamifier from "streamifier";
 import mongoose from 'mongoose';
+import { moderateText } from '../utils/textModeration.js';
 
 // ✅ Helper function with proper error handling
 const uploadToCloudinaryLocal = (fileBuffer, options = {}) => {
@@ -42,14 +43,30 @@ export const createPost = async (req, res) => {
     console.log("📝 Content:", content);
     console.log("📁 Files received:", req.files?.length || 0);
 
-    if (!req.files || req.files.length === 0) {
+    // ✅ Allow text-only posts - media is optional
+    if ((!req.files || req.files.length === 0) && !content?.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Please select at least one file to upload"
+        message: "Please add some content or media"
       });
     }
 
-    const maxImageSize = 20 * 1024 * 1024; // 20MB
+    // ✅ TEXT MODERATION - Check content for inappropriate text
+    let moderationResult = { label: 'safe', score: 1.0, isSafe: true };
+    if (content && content.trim()) {
+      console.log("🔍 Moderating post content...");
+      moderationResult = await moderateText(content);
+      console.log("📊 Moderation result:", moderationResult);
+
+      if (!moderationResult.isSafe) {
+        return res.status(403).json({
+          success: false,
+          message: "Text violates community guidelines"
+        });
+      }
+    }
+
+    const maxImageSize = 50 * 1024 * 1024; // 50MB
     const maxVideoSize = 100 * 1024 * 1024; // 100MB
     let videoCount = 0;
 
@@ -122,12 +139,17 @@ export const createPost = async (req, res) => {
       }
     }
 
-    // Parse hashtags
+    // Parse hashtags - handle both #hashtag and hashtag formats
     const parsedHashtags = hashtags 
       ? hashtags.split(',')
-          .map(tag => tag.trim().toLowerCase())
-          .filter(tag => tag.startsWith('#') && tag.length > 1)
+          .map(tag => {
+            const cleaned = tag.trim().replace(/^#/, ''); // Remove # if present
+            return cleaned.toLowerCase();
+          })
+          .filter(tag => tag.length > 0) // Must have content
       : [];
+    
+    console.log("🏷️ Parsed hashtags:", parsedHashtags);
 
     // Create post
     console.log("📦 Creating post in database...");
@@ -138,7 +160,11 @@ export const createPost = async (req, res) => {
       hashtags: parsedHashtags,
       location: location || '',
       likes: [],
-      comments: []
+      comments: [],
+      // Add moderation metadata
+      moderationLabel: moderationResult.label,
+      moderationScore: moderationResult.score,
+      isFlagged: !moderationResult.isSafe
     });
 
     const savedPost = await post.save();
@@ -146,8 +172,8 @@ export const createPost = async (req, res) => {
 
     // Populate user data
     const populatedPost = await Post.findById(savedPost._id)
-      .populate('user', 'name username avatar profilePicture')
-      .populate('comments.user', 'name username avatar')
+      .populate('user', 'name username avatar profilePicture role')
+      .populate('comments.user', 'name username avatar role')
       .lean();
 
     // ✅ EMIT SOCKET EVENT FOR AUTO-REFRESH
@@ -199,20 +225,32 @@ export const getFeed = async (req, res) => {
       .limit(limit)
       .populate({
         path: 'user',
-        select: 'name username avatar profilePicture',
+        select: 'name username avatar profilePicture role',
         model: User
       })
       .populate({
         path: 'likes.user',
-        select: 'name username avatar profilePicture',
+        select: 'name username avatar profilePicture role',
         model: User
       })
       .populate({
         path: 'comments.user',
-        select: 'name username avatar',
+        select: 'name username avatar profilePicture role',
+        model: User
+      })
+      .populate({
+        path: 'comments.replies.user',
+        select: 'name username avatar profilePicture role',
         model: User
       })
       .lean();
+
+    // ✅ Add likesCount and commentsCount to each post
+    const postsWithCounts = posts.map(post => ({
+      ...post,
+      likesCount: post.likes?.length || 0,
+      commentsCount: post.comments?.length || 0
+    }));
 
     const totalPosts = await Post.countDocuments();
     
@@ -220,7 +258,7 @@ export const getFeed = async (req, res) => {
     
     res.json({
       success: true,
-      posts: posts || [],
+      posts: postsWithCounts || [],
       pagination: {
         page,
         limit,
@@ -306,8 +344,8 @@ export const toggleLike = async (req, res) => {
 
     // ✅ Get updated post with populated data
     const updatedPost = await Post.findById(postId)
-      .populate('user', 'username profilePicture avatar name')
-      .populate('likes.user', 'username profilePicture')
+      .populate('user', 'username profilePicture avatar name role')
+      .populate('likes.user', 'username profilePicture role')
       .lean();
 
     // ✅ EMIT SOCKET EVENT FOR AUTO-REFRESH
@@ -374,6 +412,18 @@ export const addComment = async (req, res) => {
       });
     }
 
+    // ✅ TEXT MODERATION - Check comment for inappropriate text
+    console.log("🔍 Moderating comment text...");
+    const moderationResult = await moderateText(text.trim());
+    console.log("📊 Moderation result:", moderationResult);
+
+    if (!moderationResult.isSafe) {
+      return res.status(403).json({
+        success: false,
+        message: "Text violates community guidelines"
+      });
+    }
+
     const post = await Post.findById(postId);
     if (!post) {
       return res.status(404).json({
@@ -385,7 +435,11 @@ export const addComment = async (req, res) => {
     const comment = {
       user: userId,
       text: text.trim(),
-      createdAt: new Date()
+      createdAt: new Date(),
+      // Add moderation metadata
+      moderationLabel: moderationResult.label,
+      moderationScore: moderationResult.score,
+      isFlagged: !moderationResult.isSafe
     };
 
     post.comments.push(comment);
@@ -394,17 +448,17 @@ export const addComment = async (req, res) => {
     const populatedPost = await Post.findById(postId)
       .populate({
         path: 'comments.user',
-        select: 'username profilePicture avatar name',
+        select: 'username profilePicture avatar name role',
         model: User
       })
       .populate({
         path: 'user',
-        select: 'username profilePicture avatar name',
+        select: 'username profilePicture avatar name role',
         model: User
       })
       .populate({
         path: 'likes.user',
-        select: 'username profilePicture',
+        select: 'username profilePicture role',
         model: User
       })
       .lean();
@@ -599,15 +653,24 @@ export const getUserPosts = async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate('user', 'username profilePicture')
-      .populate('comments.user', 'username profilePicture')
+      .populate('user', 'username profilePicture avatar')
+      .populate('likes.user', 'username profilePicture avatar')
+      .populate('comments.user', 'username profilePicture avatar')
+      .populate('comments.replies.user', 'username profilePicture avatar')
       .lean();
+
+    // ✅ Add likesCount and commentsCount to each post
+    const postsWithCounts = posts.map(post => ({
+      ...post,
+      likesCount: post.likes?.length || 0,
+      commentsCount: post.comments?.length || 0
+    }));
 
     const totalPosts = await Post.countDocuments({ user: userId });
 
     res.json({
       success: true,
-      posts,
+      posts: postsWithCounts,
       pagination: {
         page,
         limit,
@@ -659,6 +722,304 @@ export const debugCheckPosts = async (req, res) => {
       success: false,
       message: "Debug failed",
       error: error.message
+    });
+  }
+};
+
+// ✅ 9. EDIT COMMENT
+export const editComment = async (req, res) => {
+  try {
+    const { postId, commentId } = req.params;
+    const { text } = req.body;
+    const userId = req.user._id;
+
+    if (!text?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment text is required'
+      });
+    }
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: 'Post not found'
+      });
+    }
+
+    const comment = post.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Comment not found'
+      });
+    }
+
+    if (comment.user.toString() !== userId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to edit this comment'
+      });
+    }
+
+    comment.text = text.trim();
+    comment.isEdited = true;
+    await post.save();
+
+    const updatedPost = await Post.findById(postId)
+      .populate('comments.user', 'username profilePicture avatar')
+      .lean();
+
+    if (req.io) {
+      req.io.to(`post_${postId}`).emit("comment_edited", {
+        postId,
+        commentId,
+        newText: text.trim(),
+        timestamp: new Date()
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Comment edited successfully',
+      comment: updatedPost.comments.find(c => c._id.toString() === commentId)
+    });
+  } catch (error) {
+    console.error('Edit comment error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to edit comment'
+    });
+  }
+};
+
+// ✅ 10. REPLY TO COMMENT
+export const replyToComment = async (req, res) => {
+  try {
+    const { postId, commentId } = req.params;
+    const { text } = req.body;
+    const userId = req.user._id;
+
+    if (!text?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reply text is required'
+      });
+    }
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: 'Post not found'
+      });
+    }
+
+    const comment = post.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Comment not found'
+      });
+    }
+
+    const reply = {
+      user: userId,
+      text: text.trim(),
+      createdAt: new Date(),
+      isEdited: false
+    };
+
+    comment.replies.push(reply);
+    await post.save();
+
+    const updatedPost = await Post.findById(postId)
+      .populate('comments.user', 'username profilePicture avatar')
+      .populate('comments.replies.user', 'username profilePicture avatar')
+      .lean();
+
+    const updatedComment = updatedPost.comments.find(c => c._id.toString() === commentId);
+
+    if (req.io) {
+      req.io.to(`post_${postId}`).emit("reply_added", {
+        postId,
+        commentId,
+        reply: updatedComment.replies[updatedComment.replies.length - 1],
+        timestamp: new Date()
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Reply added successfully',
+      comment: updatedComment
+    });
+  } catch (error) {
+    console.error('Reply to comment error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add reply'
+    });
+  }
+};
+
+// ✅ 11. DELETE REPLY
+export const deleteReply = async (req, res) => {
+  try {
+    const { postId, commentId, replyId } = req.params;
+    const userId = req.user._id;
+
+    console.log('🗑️ DELETE REPLY - Post:', postId, 'Comment:', commentId, 'Reply:', replyId, 'User:', userId);
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      console.log('❌ Post not found');
+      return res.status(404).json({
+        success: false,
+        message: 'Post not found'
+      });
+    }
+
+    const comment = post.comments.id(commentId);
+    if (!comment) {
+      console.log('❌ Comment not found');
+      return res.status(404).json({
+        success: false,
+        message: 'Comment not found'
+      });
+    }
+
+    if (!comment.replies || comment.replies.length === 0) {
+      console.log('❌ No replies found in comment');
+      return res.status(404).json({
+        success: false,
+        message: 'No replies found'
+      });
+    }
+
+    console.log('📋 Available replies:', comment.replies.map(r => r._id.toString()));
+
+    const replyIndex = comment.replies.findIndex(r => r._id.toString() === replyId.toString());
+    if (replyIndex === -1) {
+      console.log('❌ Reply not found in list');
+      return res.status(404).json({
+        success: false,
+        message: 'Reply not found'
+      });
+    }
+
+    const reply = comment.replies[replyIndex];
+    const isReplyOwner = reply.user.toString() === userId.toString();
+    const isPostOwner = post.user.toString() === userId.toString();
+
+    console.log('🔐 Permissions - isReplyOwner:', isReplyOwner, 'isPostOwner:', isPostOwner);
+
+    if (!isReplyOwner && !isPostOwner) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to delete this reply'
+      });
+    }
+
+    comment.replies.splice(replyIndex, 1);
+    await post.save();
+
+    console.log('✅ Reply deleted successfully');
+
+    if (req.io) {
+      req.io.to(`post_${postId}`).emit("reply_deleted", {
+        postId,
+        commentId,
+        replyId,
+        timestamp: new Date()
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Reply deleted successfully',
+      remainingReplies: comment.replies.length
+    });
+  } catch (error) {
+    console.error('❌ Delete reply error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete reply',
+      error: error.message
+    });
+  }
+};
+
+// ✅ 12. EDIT REPLY
+export const editReply = async (req, res) => {
+  try {
+    const { postId, commentId, replyId } = req.params;
+    const { text } = req.body;
+    const userId = req.user._id;
+
+    if (!text?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reply text is required'
+      });
+    }
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: 'Post not found'
+      });
+    }
+
+    const comment = post.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Comment not found'
+      });
+    }
+
+    const reply = comment.replies.id(replyId);
+    if (!reply) {
+      return res.status(404).json({
+        success: false,
+        message: 'Reply not found'
+      });
+    }
+
+    if (reply.user.toString() !== userId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to edit this reply'
+      });
+    }
+
+    reply.text = text.trim();
+    reply.isEdited = true;
+    await post.save();
+
+    if (req.io) {
+      req.io.to(`post_${postId}`).emit("reply_edited", {
+        postId,
+        commentId,
+        replyId,
+        newText: text.trim(),
+        timestamp: new Date()
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Reply edited successfully',
+      reply
+    });
+  } catch (error) {
+    console.error('Edit reply error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to edit reply'
     });
   }
 };

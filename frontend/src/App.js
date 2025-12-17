@@ -11,6 +11,7 @@ import Feed from "./pages/Feed";
 import Settings from './pages/Settings';
 import OtherUserProfile from './pages/OtherUserProfile';
 import Search from './pages/Search';
+import HashtagPage from './pages/HashtagPage';
 import ChatLayout from "./components/ChatLayout";
 import ChatWindow from "./components/ChatWindow";
 import ChatEmptyState from "./components/ChatEmptyState";
@@ -84,6 +85,12 @@ function App() {
             <Route path="/search" element={
               <ProtectedRoute>
                 <Search />
+              </ProtectedRoute>
+            } />
+
+            <Route path="/hashtag/:hashtag" element={
+              <ProtectedRoute>
+                <HashtagPage />
               </ProtectedRoute>
             } />
             

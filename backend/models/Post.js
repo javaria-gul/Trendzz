@@ -30,6 +30,45 @@ const commentSchema = new mongoose.Schema({
     trim: true,
     maxlength: 1000
   },
+  replies: [{
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    text: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 1000
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    },
+    isEdited: {
+      type: Boolean,
+      default: false
+    }
+  }],
+  isEdited: {
+    type: Boolean,
+    default: false
+  },
+  // Text moderation fields (optional, backward compatible)
+  moderationLabel: {
+    type: String,
+    enum: ['safe', 'abusive', 'hate'],
+    default: 'safe'
+  },
+  moderationScore: {
+    type: Number,
+    default: 1.0
+  },
+  isFlagged: {
+    type: Boolean,
+    default: false
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -75,6 +114,20 @@ const postSchema = new mongoose.Schema({
   },
   likes: [reactionSchema], // ✅ FIXED: Array of reaction objects
   comments: [commentSchema],
+  // Text moderation fields (optional, backward compatible)
+  moderationLabel: {
+    type: String,
+    enum: ['safe', 'abusive', 'hate'],
+    default: 'safe'
+  },
+  moderationScore: {
+    type: Number,
+    default: 1.0
+  },
+  isFlagged: {
+    type: Boolean,
+    default: false
+  },
   createdAt: {
     type: Date,
     default: Date.now

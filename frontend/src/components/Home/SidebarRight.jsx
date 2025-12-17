@@ -1,9 +1,14 @@
 // src/components/Home/SidebarRight.jsx
-import React, { useState } from "react";
-import { UserPlus, Users } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { UserPlus, Users, TrendingUp } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { postsAPI } from "../../services/api";
 
 const SidebarRight = () => {
+  const navigate = useNavigate();
   const [openPopup, setOpenPopup] = useState(null);
+  const [trendingHashtags, setTrendingHashtags] = useState([]);
+  const [loadingHashtags, setLoadingHashtags] = useState(false);
 
   // Dummy data (later API)
   const suggestions = [
@@ -25,6 +30,25 @@ const SidebarRight = () => {
     { name: "Arslan Iqbal", username: "@arslan" },
   ];
 
+  // Fetch trending hashtags
+  useEffect(() => {
+    fetchTrendingHashtags();
+  }, []);
+
+  const fetchTrendingHashtags = async () => {
+    try {
+      setLoadingHashtags(true);
+      const response = await postsAPI.getTrendingHashtags(5, 7);
+      if (response.success) {
+        setTrendingHashtags(response.trending || []);
+      }
+    } catch (error) {
+      console.error('Error fetching trending hashtags:', error);
+    } finally {
+      setLoadingHashtags(false);
+    }
+  };
+
   const getTop2 = (arr) => arr.slice(0, 2);
 
   return (
@@ -44,6 +68,44 @@ const SidebarRight = () => {
           overflow-hidden
         "
       >
+        {/* Trending Hashtags */}
+        <div className="bg-white rounded-xl shadow p-2">
+          <div className="flex items-center gap-1 mb-1">
+            <TrendingUp size={16} className="text-red-500" />
+            <h2 className="font-semibold text-gray-800 text-s">Trending</h2>
+          </div>
+
+          {loadingHashtags ? (
+            <div className="text-center py-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mx-auto"></div>
+            </div>
+          ) : trendingHashtags.length > 0 ? (
+            <ul className="space-y-1">
+              {getTop2(trendingHashtags).map((item, index) => (
+                <li 
+                  key={index}
+                  onClick={() => navigate(`/hashtag/${item.hashtag}`)}
+                  className="cursor-pointer hover:bg-blue-50 p-1.5 rounded-lg transition-colors"
+                >
+                  <p className="text-xs font-semibold text-blue-600">#{item.hashtag}</p>
+                  <p className="text-xs text-gray-500">{item.count} {item.count === 1 ? 'post' : 'posts'}</p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-gray-500 py-2">No trending hashtags yet</p>
+          )}
+
+          {trendingHashtags.length > 2 && (
+            <button
+              onClick={() => setOpenPopup("trending")}
+              className="mt-1 text-red-600 text-xs hover:text-red-700 transition"
+            >
+              View All →
+            </button>
+          )}
+        </div>
+
         {/* Suggestions */}
         <div className="bg-white rounded-xl shadow p-2">
           <div className="flex items-center gap-1 mb-1">
@@ -144,7 +206,13 @@ const SidebarRight = () => {
             </h2>
 
             <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-              {(openPopup === "suggestions"
+              {(openPopup === "trending"
+                ? trendingHashtags.map((item, index) => ({
+                    name: `#${item.hashtag}`,
+                    username: `${item.count} posts`,
+                    hashtag: item.hashtag
+                  }))
+                : openPopup === "suggestions"
                 ? suggestions
                 : openPopup === "followers"
                 ? followers
@@ -161,19 +229,39 @@ const SidebarRight = () => {
                   "
                 >
                   <div>
-                    <p className="font-semibold text-gray-800">{item.name}</p>
-                    <p className="text-sm text-gray-500">{item.username}</p>
+                    <p className="text-sm font-medium text-gray-800">
+                      {item.name}
+                    </p>
+                    <p className="text-xs text-gray-500">{item.username}</p>
                   </div>
-                  <button
-                    className="
-                      px-3 py-1 bg-blue-900 
-                      text-white rounded-lg 
-                      hover:bg-red-700 
-                      transition
-                    "
-                  >
-                    Follow
-                  </button>
+
+                  {openPopup === "trending" ? (
+                    <button
+                      onClick={() => {
+                        setOpenPopup(null);
+                        navigate(`/hashtag/${item.hashtag}`);
+                      }}
+                      className="
+                        px-3 py-1 bg-blue-600 
+                        text-white rounded-lg 
+                        hover:bg-blue-700 
+                        transition text-sm
+                      "
+                    >
+                      View
+                    </button>
+                  ) : (
+                    <button
+                      className="
+                        px-3 py-1 bg-blue-900 
+                        text-white rounded-lg 
+                        hover:bg-red-700 
+                        transition
+                      "
+                    >
+                      Follow
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

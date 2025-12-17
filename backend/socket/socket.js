@@ -458,6 +458,7 @@ const setupSocket = (server) => {
           lastSeen: new Date()
         });
 
+        console.log(`📢 User ${socket.userId} status updated to offline`); // ✅ FIXED LINE 461
         console.log(`📢 User ${socket.userId} status updated to offline`);
 
       } catch (error) {
