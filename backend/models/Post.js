@@ -64,6 +64,21 @@ const postSchema = new mongoose.Schema({
     ref: 'User',
     default: null
   },
+  // For shared posts
+  isShared: {
+    type: Boolean,
+    default: false
+  },
+  originalPost: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Post',
+    default: null
+  },
+  originalUser: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
   content: {
     type: String,
     trim: true,

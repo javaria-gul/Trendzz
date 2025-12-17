@@ -1,6 +1,6 @@
 // frontend/src/App.js
 import React, { useContext } from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from "react-router-dom";
 import AuthPage from "./pages/AuthPage";
 import HomeLayout from "./components/Home/HomeLayout";
 import { AuthProvider, AuthContext } from "./context/AuthContext";
@@ -15,6 +15,12 @@ import ChatLayout from "./components/ChatLayout";
 import ChatWindow from "./components/ChatWindow";
 import ChatEmptyState from "./components/ChatEmptyState";
 import NotificationPage from './pages/NotificationPage';
+
+// Wrapper component to force remount when userId changes
+const OtherUserProfileWrapper = () => {
+  const { userId } = useParams();
+  return <OtherUserProfile key={userId} />;
+};
 
 // Simple Protected Route
 const ProtectedRoute = ({ children }) => {
@@ -64,7 +70,7 @@ function App() {
               <Route index element={<Feed />} /> {/* Default feed */}
               <Route path="profile" element={<Profile />} /> {/* Profile page */}
               <Route path="create-post" element={<div>Create Post Page</div>} /> {/* Create post page */}
-              <Route path="user/:userId" element={<OtherUserProfile />} />
+              <Route path="user/:userId" element={<OtherUserProfileWrapper />} />
               <Route path="search" element={<Search />} />
               <Route path="settings" element={<Settings />} />
             </Route>

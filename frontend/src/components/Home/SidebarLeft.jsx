@@ -251,6 +251,8 @@ const SidebarLeft = () => {
 
   // Navigation function
   const handleNavigation = (path, label, onClick) => {
+    console.log('🔹 Navigation clicked:', { path, label });
+    
     if (path === "#") {
       if (label === "Search") {
         setActiveDropdown(activeDropdown === 'search' ? null : 'search');
@@ -274,6 +276,7 @@ const SidebarLeft = () => {
     }
     
     // For all other paths (including /search, /profile, etc.), navigate directly
+    console.log('🚀 Navigating to:', path);
     setActiveDropdown(null);
     navigate(path);
   };
@@ -563,11 +566,7 @@ const SidebarLeft = () => {
                     focus:outline-none focus:ring-2 focus:ring-yellow-300
                   `}
                   title={`${item.label}${badgeCount > 0 ? ` (${badgeCount})` : ''}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleNavigation(item.path, item.label, item.onClick);
-                  }}
+                  onClick={() => handleNavigation(item.path, item.label, item.onClick)}
                 >
                   {item.icon}
                   

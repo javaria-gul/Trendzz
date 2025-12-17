@@ -7,7 +7,6 @@ import { Outlet, useLocation } from "react-router-dom";
 const HomeLayout = () => {
   const location = useLocation();
   const isChatPage = location.pathname.startsWith("/chat");
- 
 
   // Show sidebars for ALL pages except chat
   const showSidebars = !isChatPage;
@@ -29,7 +28,7 @@ const HomeLayout = () => {
           ${isChatPage ? "mr-0" : "mr-0 lg:mr-64"}
         `}
       >
-        <Outlet />
+        <Outlet key={location.pathname + location.search} />
       </div>
 
       {/* RIGHT SIDEBAR */}
