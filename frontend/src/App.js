@@ -16,7 +16,6 @@ import ChatWindow from "./components/ChatWindow";
 import ChatEmptyState from "./components/ChatEmptyState";
 import NotificationPage from './pages/NotificationPage';
 
-
 // Simple Protected Route
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated } = useContext(AuthContext);
@@ -53,7 +52,7 @@ function App() {
               </ProtectedRoute>
             } />
 
-            {/* HomeLayout with nested routes */}
+            {/* HomeLayout with ALL pages that need sidebars */}
             <Route path="/" element={
               <ProtectedRoute>
                 <OnboardingCheck>
@@ -61,35 +60,25 @@ function App() {
                 </OnboardingCheck>
               </ProtectedRoute>
             }>
-              {/* Nested routes - these will show in HomeLayout's main area */}
-              <Route index element={<Feed />} /> {/* ✅ CHANGE: Feed to HomeFeed */}
-              <Route path="profile" element={<Profile />} />
-              <Route path="feed" element={<Feed />} /> {/* ✅ ADD: Feed route */}
-              <Route path="create-post" element={<div>Create Post Page</div>} />
-              <Route path="/notifications" element={<NotificationPage />} />
+              {/* Nested routes - these will show in HomeLayout's main area WITH SIDEBARS */}
+              <Route index element={<Feed />} /> {/* Default feed */}
+              <Route path="profile" element={<Profile />} /> {/* Profile page */}
+              <Route path="create-post" element={<div>Create Post Page</div>} /> {/* Create post page */}
+              <Route path="user/:userId" element={<OtherUserProfile />} />
+              <Route path="search" element={<Search />} />
+              <Route path="settings" element={<Settings />} />
             </Route>
-            
-            <Route path="/settings" element={
+
+            {/* Notifications Route - from HEAD */}
+            <Route path="/notifications" element={
               <ProtectedRoute>
                 <OnboardingCheck>
-                  <Settings />
+                  <NotificationPage />
                 </OnboardingCheck>
               </ProtectedRoute>
             } />
 
-            <Route path="/user/:userId" element={
-              <ProtectedRoute>
-                <OtherUserProfile />
-              </ProtectedRoute>
-            } />
-
-            <Route path="/search" element={
-              <ProtectedRoute>
-                <Search />
-              </ProtectedRoute>
-            } />
-            
-            {/* Chat Routes */}
+            {/* Chat Routes - from HEAD with OnboardingCheck */}
             <Route path="/chat" element={
               <ProtectedRoute>
                 <OnboardingCheck>

@@ -14,9 +14,6 @@ const SidebarLeft = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [activeDropdown, setActiveDropdown] = useState(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState([]);
-  const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [showCreatePostModal, setShowCreatePostModal] = useState(false);
@@ -104,7 +101,7 @@ const SidebarLeft = () => {
     },
     { label: "Profile", icon: <User size={20} />, path: "/profile" },
     { label: "Settings", icon: <Settings size={20} />, path: "/settings" },
-    { label: "Dark Mode", icon: <Moon size={20} />, path: "/theme" },
+  
   ];
 
   // Load notifications and counts
@@ -162,8 +159,6 @@ const SidebarLeft = () => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setActiveDropdown(null);
-        setSearchQuery("");
-        setSearchResults([]);
       }
     };
 
@@ -218,11 +213,13 @@ const SidebarLeft = () => {
       return;
     }
     
+    // Handle theme toggle
     if (path === "/theme") {
       document.documentElement.classList.toggle('dark');
       return;
     }
     
+    // For all other paths (including /search, /profile, etc.), navigate directly
     setActiveDropdown(null);
     navigate(path);
   };
@@ -307,7 +304,7 @@ const SidebarLeft = () => {
     return 0;
   };
 
-  // Search dropdown (your existing code)
+  // Search dropdown
   const renderSearchDropdown = () => (
     <div 
       ref={dropdownRef}
@@ -500,7 +497,7 @@ const SidebarLeft = () => {
             const isActive = location.pathname === item.path || 
               (item.label === "Search" && activeDropdown === 'search') ||
               (item.label === "Notifications" && activeDropdown === 'notifications');
-            
+
             return (
               <li
                 key={index}

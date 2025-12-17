@@ -23,12 +23,59 @@ export const uploadImage = (formData) =>
     }
   });
 
+// Update privacy settings
+export const updatePrivacySettings = (privacySettings) => 
+  API.put('/users/update-privacy', { privacySettings });
+
 // ML-based suggested users for onboarding
 export const getSuggestedUsers = () => API.get("/suggestions/strict");
 
-// Search users
-export const searchUsers = (query) => {
-  return API.get(`/users/search?q=${encodeURIComponent(query)}`);
+// Search users function with error handling
+export const searchUsers = async (query) => {
+  try {
+    const response = await API.get(`/users/search?q=${encodeURIComponent(query)}`);
+    if (response.data && response.data.success) {
+      return response;
+    } else {
+      throw new Error("Invalid response format");
+    }
+  } catch (error) {
+    console.error("Search API error:", error);
+    throw error;
+  }
+};
+
+// Get following list
+export const getFollowingList = async (userId) => {
+  try {
+    const response = await API.get(`/users/following/${userId}`);
+    return response;
+  } catch (error) {
+    console.error("Get following list error:", error);
+    throw error;
+  }
+};
+
+// Get user by ID
+export const getUserById = async (userId) => {
+  try {
+    const response = await API.get(`/users/simple/${userId}`);
+    return response;
+  } catch (error) {
+    console.error("Get user by ID error:", error);
+    throw error;
+  }
+};
+
+// Get followers list
+export const getFollowersList = async (userId) => {
+  try {
+    const response = await API.get(`/users/followers/${userId}`);
+    return response;
+  } catch (error) {
+    console.error("Get followers list error:", error);
+    throw error;
+  }
 };
 
 // Follow user
@@ -48,3 +95,41 @@ export const debugAllUsers = () => API.get('/users/debug/all-users');
 
 // Get suggested users for chat
 export const getChatSuggestedUsers = () => API.get('/users/suggested-users');
+
+// ML Recommendations API call
+export const getMLRecommendations = async () => {
+  try {
+    const response = await API.get('/users/recommendations');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching ML recommendations:', error);
+    throw error;
+  }
+};
+
+// Get all users
+export const getAllUsers = async () => {
+  try {
+    const response = await API.get('/users/all');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching all users:', error);
+    throw error;
+  }
+};
+
+// Test ML recommendations
+export const testMLRecommendations = async () => {
+  try {
+    console.log('Testing ML recommendations...');
+    const token = localStorage.getItem('trendzz_token');
+    console.log('Token exists:', !!token);
+    
+    const response = await API.get('/users/recommendations');
+    console.log('ML Test Response:', response);
+    return response.data;
+  } catch (error) {
+    console.error('ML Test Error:', error.response?.data || error.message);
+    throw error;
+  }
+};

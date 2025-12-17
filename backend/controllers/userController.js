@@ -428,10 +428,13 @@ export const loginUser = async (req, res) => {
   }};
 
 // Get other user's profile
+// Get other user's profile - UPDATED TO INCLUDE PRIVACY SETTINGS
 export const getOtherUserProfile = async (req, res) => {
   try {
     const { userId } = req.params;
     const currentUserId = req.user.id;
+
+    console.log("🔍 Fetching profile for user:", userId, "by:", currentUserId);
 
     // Check if current user has blocked this user
     const currentUser = await User.findById(currentUserId);
@@ -442,8 +445,9 @@ export const getOtherUserProfile = async (req, res) => {
       });
     }
 
+    // Get user WITH privacySettings
     const user = await User.findById(userId)
-      .select('-password -email -emailVerificationToken -emailVerificationExpires')
+      .select('-password -emailVerificationToken -emailVerificationExpires')
       .populate('followers', 'name username avatar')
       .populate('following', 'name username avatar');
 
@@ -454,19 +458,57 @@ export const getOtherUserProfile = async (req, res) => {
       });
     }
 
+    // Ensure privacySettings exist with default values
+    const userWithPrivacy = {
+      ...user.toObject(),
+      privacySettings: user.privacySettings || {
+        showEmail: true,
+        showFollowers: true,
+        showFollowing: true,
+        allowMessages: true,
+        showOnlineStatus: true
+      }
+    };
+
     // Check if current user is following this user
     const isFollowing = currentUser.following && currentUser.following.includes(userId);
-    
-    // Check if current user has admired this user (you might need to implement this logic)
-    const hasAdmired = false; // Implement admiration logic if needed
+    const hasAdmired = false;
+
+    // Prepare response data
+    const responseData = {
+      _id: userWithPrivacy._id,
+      name: userWithPrivacy.name,
+      username: userWithPrivacy.username,
+      email: userWithPrivacy.privacySettings?.showEmail ? userWithPrivacy.email : undefined,
+      bio: userWithPrivacy.bio || '',
+      avatar: userWithPrivacy.avatar,
+      coverImage: userWithPrivacy.coverImage,
+      role: userWithPrivacy.role,
+      semester: userWithPrivacy.semester,
+      batch: userWithPrivacy.batch,
+      subjects: userWithPrivacy.subjects || [],
+      followers: userWithPrivacy.privacySettings?.showFollowers ? userWithPrivacy.followers : [],
+      following: userWithPrivacy.privacySettings?.showFollowing ? userWithPrivacy.following : [],
+      admirers: userWithPrivacy.admirers || [],
+      admirersCount: userWithPrivacy.admirersCount || 0,
+      privacySettings: userWithPrivacy.privacySettings,
+      createdAt: userWithPrivacy.createdAt,
+      lastSeen: userWithPrivacy.lastSeen,
+      isFollowing,
+      hasAdmired,
+      followersCount: userWithPrivacy.followers?.length || 0,
+      followingCount: userWithPrivacy.following?.length || 0,
+      postsCount: userWithPrivacy.postsCount || 0
+    };
+
+    console.log("📤 Sending profile data with privacy settings:", {
+      name: responseData.name,
+      allowMessages: responseData.privacySettings?.allowMessages
+    });
 
     res.json({
       success: true,
-      data: {
-        ...user.toObject(),
-        isFollowing,
-        hasAdmired
-      }
+      data: responseData
     });
 
   } catch (error) {
@@ -593,7 +635,7 @@ export const getUserProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
       .select('-password -emailVerificationToken -emailVerificationExpires')
-      .populate('blockedUsers', 'name username avatar'); // Populate blocked users
+      .populate('blockedUsers', 'name username avatar role'); // Populate with more fields
 
     if (!user) {
       return res.status(404).json({ 
@@ -778,3 +820,150 @@ export const debugProfileCheck = async (req, res) => {
   }
 };
 
+// Update privacy settings
+export const updatePrivacySettings = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { privacySettings } = req.body;
+
+    console.log("🛡️ Updating privacy settings for user:", userId);
+    console.log("📋 New privacy settings:", privacySettings);
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { privacySettings },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Privacy settings updated successfully",
+      user: updatedUser
+    });
+
+  } catch (error) {
+    console.error("Update privacy settings error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while updating privacy settings"
+    });
+  }
+};
+
+// Alternative endpoint for privacy settings
+export const updateUserPrivacy = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { privacySettings } = req.body;
+
+    console.log("🛡️ UPDATING PRIVACY - User:", userId);
+    console.log("📋 Privacy settings:", privacySettings);
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { privacySettings },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    res.json({
+      success: true,
+      message: "Privacy settings updated",
+      user: updatedUser
+    });
+
+  } catch (error) {
+    console.error("Privacy update error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update privacy settings"
+    });
+  }
+};
+// Debug: Check user's current privacy settings
+export const debugPrivacySettings = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('privacySettings name email');
+    
+    res.json({
+      success: true,
+      user: {
+        name: user.name,
+        email: user.email,
+        privacySettings: user.privacySettings
+      }
+    });
+  } catch (error) {
+    console.error("Debug privacy error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Debug failed"
+    });
+  }
+};
+// Get detailed following list
+export const getFollowingList = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const user = await User.findById(userId)
+      .populate('following', 'name username avatar bio role semester batch')
+      .select('following');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      following: user.following || []
+    });
+
+  } catch (error) {
+    console.error("Get following list error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching following list"
+    });
+  }
+};
+
+// Get detailed followers list
+export const getFollowersList = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const user = await User.findById(userId)
+      .populate('followers', 'name username avatar bio role semester batch')
+      .select('followers');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      followers: user.followers || []
+    });
+
+  } catch (error) {
+    console.error("Get followers list error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching followers list"
+    });
+  }
+};
+ origin/feature-mywork

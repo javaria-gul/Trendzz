@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, User, X, MessageCircle } from 'lucide-react';
+import { Search, User, X, MessageCircle, ChevronRight } from 'lucide-react';
 import { searchUsers } from '../../services/user';
 import { startChat } from '../../services/chat';
 import { useNavigate } from 'react-router-dom';
@@ -23,7 +23,18 @@ const SearchComponent = ({ mode = "profile", onUserSelect }) => {
       setIsLoading(true);
       try {
         const response = await searchUsers(query);
-        setResults(response.data);
+        
+        // Proper response handling
+        let users = [];
+        if (response.data && Array.isArray(response.data)) {
+          users = response.data;
+        } else if (response.data && response.data.data) {
+          users = response.data.data;
+        } else if (response.data && response.data.success && response.data.data) {
+          users = response.data.data;
+        }
+        
+        setResults(users);
         setShowResults(true);
       } catch (error) {
         console.error('Search error:', error);
@@ -71,46 +82,58 @@ const SearchComponent = ({ mode = "profile", onUserSelect }) => {
     setShowResults(false);
   };
 
+  const handleKeyPress = (e) => {
+    if (e.key === "Enter" && query.length >= 2 && results.length > 0) {
+      handleUserClick(results[0]._id);
+    }
+  };
+
   return (
-    <div className="relative w-full max-w-md">
-      {/* Search Input */}
+    <div className="relative w-full">
+      {/* Search Input - FIXED TEXT COLOR */}
       <div className="relative">
-        <Search className="absolute left-3 top-3 text-gray-400 w-5 h-5" />
+        <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
         <input
           type="text"
-          placeholder={mode === "chat" ? "Search users to message..." : "Search users..."}
+          placeholder={mode === "chat" ? "Search users to message..." : "Search users by name or username..."}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="w-full bg-gray-100 border border-gray-200 rounded-xl pl-10 pr-10 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+          onKeyPress={handleKeyPress}
+          className="w-full bg-gray-50 border border-gray-300 rounded-xl pl-12 pr-12 py-3.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-500"
+          style={{ color: '#111827' }} // Force dark text color
+          autoFocus
         />
         {query && (
           <button
             onClick={clearSearch}
-            className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+            className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
           >
             <X size={18} />
           </button>
         )}
       </div>
 
-      {/* Search Results */}
+      {/* Search Results Dropdown - STAYS INSIDE BLOCK */}
       {showResults && (
-        <div className="absolute top-12 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-80 overflow-y-auto z-50">
-          {isLoading ? (
-            <div className="p-4 text-center">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600 mx-auto"></div>
-              <p className="text-gray-500 mt-2">Searching...</p>
-            </div>
-          ) : results.length > 0 ? (
-            <div className="py-2">
-              {results.map((user) => (
-                <button
-                  key={user._id}
-                  onClick={() => handleUserClick(user)}
-                  className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center justify-between transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white">
+        <div className="relative mt-3 animate-fadeIn">
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden max-h-96 overflow-y-auto">
+            {/* Loading State */}
+            {isLoading ? (
+              <div className="p-6 text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="text-gray-500 text-sm mt-2">Searching users...</p>
+              </div>
+            ) : results.length > 0 ? (
+              /* Users List */
+              <div>
+                {results.map((user) => (
+                  <button
+                    key={user._id}
+                    onClick={() => handleUserClick(user._id)}
+                    className="w-full text-left px-4 py-3 hover:bg-blue-50 flex items-center gap-3 transition-colors border-b border-gray-100 last:border-b-0"
+                  >
+                    {/* Avatar */}
+                    <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white flex-shrink-0 overflow-hidden">
                       {user.avatar ? (
                         <img 
                           src={user.avatar} 
@@ -118,26 +141,36 @@ const SearchComponent = ({ mode = "profile", onUserSelect }) => {
                           className="w-full h-full rounded-full object-cover"
                         />
                       ) : (
-                        <User size={20} />
+                        <User size={18} />
                       )}
                     </div>
-                    <div>
-                      <p className="font-semibold text-gray-800">{user.name}</p>
-                      <p className="text-sm text-gray-500">@{user.username}</p>
+                    
+                    {/* User Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 text-sm truncate">
+                        {user.name}
+                      </p>
+                      <p className="text-gray-600 text-xs truncate">
+                        @{user.username}
+                      </p>
                     </div>
-                  </div>
-                  
-                  {mode === "chat" && (
-                    <MessageCircle className="w-5 h-5 text-gray-400 hover:text-blue-500" />
-                  )}
-                </button>
-              ))}
-            </div>
-          ) : query.length >= 2 ? (
-            <div className="p-4 text-center text-gray-500">
-              No users found
-            </div>
-          ) : null}
+                    
+                    {/* Arrow */}
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                  </button>
+                ))}
+              </div>
+            ) : query.length >= 2 ? (
+              /* No Results */
+              <div className="p-6 text-center">
+                <Search className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-600 text-sm">
+                  No users found for "<span className="font-medium text-gray-800">{query}</span>"
+                </p>
+                <p className="text-gray-400 text-xs mt-1">Try different keywords</p>
+              </div>
+            ) : null}
+          </div>
         </div>
       )}
     </div>
