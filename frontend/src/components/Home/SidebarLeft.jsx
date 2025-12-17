@@ -19,6 +19,9 @@ const SidebarLeft = () => {
   const [showCreatePostModal, setShowCreatePostModal] = useState(false);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
   
   const { userData } = useContext(AuthContext);
   const dropdownRef = useRef(null);

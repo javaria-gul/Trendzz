@@ -385,7 +385,6 @@ const handleFollow = async (e) => {
     }
   };
 
-<<<<<<< HEAD
 
   // Handle message 
   // Updated handleMessage function in OtherUserProfile.jsx
@@ -417,15 +416,6 @@ const handleFollow = async (e) => {
 
       alert(errorMessage);
     }
-=======
-  // Handle message
-  const handleMessage = (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    navigate(`/chat/${userId}`);
->>>>>>> origin/feature-mywork
   };
 
   // Handle view posts
@@ -1120,21 +1110,6 @@ const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => 
               </div>
 
               <div className="space-y-2">
-<<<<<<< HEAD
-                <button
-                  onClick={() => {
-                    handleViewPosts();
-                    setShowOptions(false);
-                  }}
-                  className="w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg flex items-center gap-3 transition"
-                >
-                  <Eye size={18} />
-                  View Posts
-                </button>
-
-=======
-                
->>>>>>> origin/feature-mywork
                 <button
                   onClick={confirmBlockUser}
                   className="w-full text-left px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-3 transition"
@@ -1275,14 +1250,9 @@ const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => 
               <button
                 onClick={handleFollow}
                 disabled={isFollowLoading}
-<<<<<<< HEAD
-                className={`px-4 py-2 rounded-lg transition font-medium ${isFollowing
-                    ? 'bg-gray-500 text-white hover:bg-gray-600'
-=======
                 className={`px-4 py-2 rounded-lg transition font-medium ${
                   isFollowing 
-                    ? 'bg-red-700 text-white hover:bg-blue-900' 
->>>>>>> origin/feature-mywork
+                    ? 'bg-gray-500 text-white hover:bg-gray-600' 
                     : 'bg-red-700 text-white hover:bg-blue-900'
                   } ${isFollowLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
@@ -1353,23 +1323,6 @@ const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => 
                 <p className="text-xl sm:text-2xl font-bold text-red-600">{userProfile.admirersCount || 0}</p>
                 <p className="text-xs sm:text-sm text-gray-600">Admirers</p>
               </div>
-<<<<<<< HEAD
-
-              <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
-                <p className="text-xl sm:text-2xl font-bold text-blue-600">{userProfile.following?.length || 0}</p>
-                <p className="text-xs sm:text-sm text-gray-600">Following</p>
-              </div>
-
-              <div className="text-center p-3 sm:p-4 bg-green-50 rounded-lg sm:rounded-xl">
-                <p className="text-xl sm:text-2xl font-bold text-green-600">{userProfile.followers?.length || 0}</p>
-                <p className="text-xs sm:text-sm text-gray-600">Followers</p>
-              </div>
-
-              <div className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg sm:rounded-xl">
-                <p className="text-xl sm:text-2xl font-bold text-purple-600">{userProfile.postsCount || 0}</p>
-                <p className="text-xs sm:text-sm text-gray-600">Posts</p>
-              </div>
-=======
               
               {/* Clickable Following Box */}
               <div 
@@ -1389,16 +1342,14 @@ const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => 
                 <p className="text-xs sm:text-sm text-gray-600">Followers</p>
               </div>
               
-             {/* Clickable Posts Box */}
-{/* Clickable Posts Box */}
-<div 
-  className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg sm:rounded-xl cursor-pointer hover:bg-purple-100 transition-colors"
-  onClick={handleViewPosts}
->
-  <p className="text-xl sm:text-2xl font-bold text-purple-600">{userProfile.postsCount || 0}</p>
-  <p className="text-xs sm:text-sm text-gray-600">Posts</p>
-</div>
->>>>>>> origin/feature-mywork
+              {/* Clickable Posts Box */}
+              <div 
+                className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg sm:rounded-xl cursor-pointer hover:bg-purple-100 transition-colors"
+                onClick={handleViewPosts}
+              >
+                <p className="text-xl sm:text-2xl font-bold text-purple-600">{userProfile.postsCount || 0}</p>
+                <p className="text-xs sm:text-sm text-gray-600">Posts</p>
+              </div>
             </div>
           </motion.div>
 
@@ -1478,12 +1429,8 @@ const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => 
                 {new Date(userProfile.createdAt || Date.now()).toLocaleDateString()}
               </p>
             </div>
-<<<<<<< HEAD
-
-=======
             
             {/* Last Active (if available) */}
->>>>>>> origin/feature-mywork
             {userProfile.lastSeen && (
               <div>
                 <p className="text-xs sm:text-sm text-gray-500 mb-1">Last Active</p>
