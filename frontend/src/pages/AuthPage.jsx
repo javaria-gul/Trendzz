@@ -1,4 +1,4 @@
-// src/pages/AuthPage.jsx
+ // src/pages/AuthPage.jsx
 import React from "react";
 import { motion } from "framer-motion";
 import AuthForm from "../components/AuthForm";
@@ -56,3 +56,4 @@ export default function AuthPage() {
     </div>
   );
 }
+

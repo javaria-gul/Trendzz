@@ -1,37 +1,90 @@
 import React, { useState, useEffect, useRef, useContext } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { 
-  Home, 
-  MessageCircle, 
-  Bell, 
-  Search, 
-  PlusCircle, 
-  Settings, 
-  User, 
-  Moon,
-  X
+  Home, MessageCircle, Bell, Search, PlusCircle, Settings, User, Moon, X 
 } from "lucide-react";
 import { searchUsers } from "../../services/user";
 import { getChats } from "../../services/chat";
+import { getNotifications, getUnreadCount, markAllAsRead } from "../../services/notification";
 import { AuthContext } from "../../context/AuthContext";
+import { SocketContext } from "../../context/SocketContext";
 import CreatePostModal from './CreatePostModal';
+
 
 const SidebarLeft = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [activeDropdown, setActiveDropdown] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [showCreatePostModal, setShowCreatePostModal] = useState(false);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
-  const [notifications, setNotifications] = useState([]);
-  const [showCreatePostModal, setShowCreatePostModal] = useState(false);
-  const [chatUnreadCount, setChatUnreadCount] = useState(0);
-  const [totalUnreadMessages, setTotalUnreadMessages] = useState(0);
+  const [unreadChatsMap, setUnreadChatsMap] = useState(new Map()); // Track which chats have unread messages
   
   const { userData } = useContext(AuthContext);
+  const { socket } = useContext(SocketContext);
   const dropdownRef = useRef(null);
 
-  // ✅ UPDATED MENU ARRAY
+  // Fetch notifications from API
+  const fetchNotifications = async () => {
+    if (!userData?._id) return;
+    
+    setLoadingNotifications(true);
+    try {
+      console.log('🔵 [DEBUG] Fetching notifications...');
+      const response = await getNotifications();
+      console.log('🟢 [DEBUG] Response received:', response);
+      
+      if (response?.success) {
+        console.log('🟢 [DEBUG] Success! Notifications:', response.data);
+        setNotifications(response.data || []);
+      } else {
+        console.warn('🔴 [DEBUG] Response not successful:', response);
+      }
+    } catch (error) {
+      console.error("❌ Error fetching notifications:", error);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  // Fetch unread count from API
+  const fetchUnreadNotificationCount = async () => {
+    if (!userData?._id) return;
+    
+    try {
+      console.log('🔵 [DEBUG] Fetching unread count...');
+      const response = await getUnreadCount();
+      console.log('🟢 [DEBUG] Unread count response:', response);
+      
+      if (response?.success || response.success) {
+        const count = response.data?.unreadCount || response.unreadCount || response.data?.count || 0;
+        console.log('🟢 [DEBUG] Setting unread count to:', count);
+        setUnreadNotificationCount(count);
+      } else {
+        console.warn('🔴 [DEBUG] Unread count response not successful:', response);
+      }
+    } catch (error) {
+      console.error("❌ Error fetching unread count:", error);
+    }
+  };
+
+  // Mark all as read
+  const handleMarkAllAsRead = async () => {
+    try {
+      await markAllAsRead();
+      setUnreadNotificationCount(0);
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    } catch (error) {
+      console.error("Error marking all as read:", error);
+    }
+  };
+
+  // Menu with dynamic badge count
   const menu = [
     { label: "Home", icon: <Home size={20} />, path: "/" },
     { 
@@ -43,8 +96,7 @@ const SidebarLeft = () => {
     { 
       label: "Notifications", 
       icon: <Bell size={20} />, 
-      path: "#",
-      badgeCount: notifications.length
+      path: "#"
     },
     { label: "Search", icon: <Search size={20} />, path: "#" },
     { 
@@ -55,63 +107,112 @@ const SidebarLeft = () => {
     },
     { label: "Profile", icon: <User size={20} />, path: "/profile" },
     { label: "Settings", icon: <Settings size={20} />, path: "/settings" },
-    { label: "Dark Mode", icon: <Moon size={20} />, path: "/theme" },
+  
   ];
 
+  // Load notifications and counts
+  useEffect(() => {
+    if (userData?._id) {
+      fetchNotifications();
+      fetchUnreadNotificationCount();
+      
+      // Poll for new notifications every 30 seconds
+      const interval = setInterval(() => {
+        fetchUnreadNotificationCount();
+      }, 30000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [userData]);
+
   // Fetch unread chat counts
-  const fetchUnreadCounts = async () => {
+  const fetchUnreadChatCounts = async () => {
     try {
       if (!userData?._id) return;
       
       const response = await getChats();
       if (response.data?.success) {
         const chats = response.data.data || [];
+        const newUnreadMap = new Map();
         let totalUsersWithUnread = 0;
-        let totalUnread = 0;
         
         chats.forEach(chat => {
-          // Calculate unread for current user
+          let userUnread = 0;
+          
+          // Handle Map type
           if (chat.unreadCounts && typeof chat.unreadCounts.get === 'function') {
-            const userUnread = chat.unreadCounts.get(userData._id) || 0;
-            totalUnread += userUnread;
-            
-            if (userUnread > 0) {
-              totalUsersWithUnread++;
-            }
+            userUnread = chat.unreadCounts.get(userData._id) || 0;
+          } 
+          // Handle plain object
+          else if (chat.unreadCounts && typeof chat.unreadCounts === 'object') {
+            userUnread = chat.unreadCounts[userData._id.toString()] || 0;
+          }
+          
+          if (userUnread > 0) {
+            totalUsersWithUnread++;
+            newUnreadMap.set(chat._id, userUnread);
           }
         });
         
+        setUnreadChatsMap(newUnreadMap);
+        console.log('📊 Chat unread count updated:', totalUsersWithUnread, 'Map:', newUnreadMap);
         setChatUnreadCount(totalUsersWithUnread);
-        setTotalUnreadMessages(totalUnread);
-        
-        console.log('📊 Sidebar Unread Counts:', {
-          usersWithUnread: totalUsersWithUnread,
-          totalUnreadMessages: totalUnread
-        });
       }
     } catch (error) {
       console.error("Fetch unread counts error:", error);
     }
   };
 
-  // Load unread counts on mount and when user data changes
+  // Load unread chat counts
   useEffect(() => {
     if (userData?._id) {
-      fetchUnreadCounts();
-      
-      // Refresh every 30 seconds
-      const interval = setInterval(fetchUnreadCounts, 30000);
+      fetchUnreadChatCounts();
+      const interval = setInterval(fetchUnreadChatCounts, 30000);
       return () => clearInterval(interval);
     }
   }, [userData]);
+
+  // Real-time socket listener for chat updates (immediate badge update)
+  useEffect(() => {
+    if (!socket || !userData?._id) return;
+
+    const handleChatUpdated = (data) => {
+      console.log('🔔 Chat updated in sidebar:', data);
+      
+      if (data.chatId && data.unreadCount !== undefined) {
+        setUnreadChatsMap(prevMap => {
+          const newMap = new Map(prevMap);
+          
+          if (data.unreadCount > 0) {
+            // Add or update this chat as having unread messages
+            newMap.set(data.chatId, data.unreadCount);
+          } else {
+            // Remove this chat from unread map (it was read)
+            newMap.delete(data.chatId);
+          }
+          
+          // Update badge count based on Map size (number of chats with unread messages)
+          const newBadgeCount = newMap.size;
+          console.log('⚡ INSTANT badge update:', newBadgeCount, 'chats with unread messages');
+          setChatUnreadCount(newBadgeCount);
+          
+          return newMap;
+        });
+      }
+    };
+
+    socket.on('chat_updated', handleChatUpdated);
+
+    return () => {
+      socket.off('chat_updated', handleChatUpdated);
+    };
+  }, [socket, userData]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setActiveDropdown(null);
-        setSearchQuery("");
-        setSearchResults([]);
       }
     };
 
@@ -148,42 +249,51 @@ const SidebarLeft = () => {
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
 
-  // Mock notifications data
-  useEffect(() => {
-    const mockNotifications = [
-      { id: 1, type: "like", user: "John Doe", message: "liked your post", time: "5 min ago", read: false },
-      { id: 2, type: "follow", user: "Sarah Smith", message: "started following you", time: "1 hour ago", read: true },
-      { id: 3, type: "comment", user: "Mike Johnson", message: "commented on your post", time: "2 hours ago", read: false },
-    ];
-    setNotifications(mockNotifications);
-  }, []);
-
-  // ✅ UPDATED HANDLE NAVIGATION FUNCTION
-  const handleNavigation = (path, label, onClick) => {
+  // Navigation function
+  const handleNavigation = (path, label, onClick, event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
+    console.log('🔹 Navigation clicked:', { path, label });
+    
     if (path === "#") {
       if (label === "Search") {
         setActiveDropdown(activeDropdown === 'search' ? null : 'search');
       } else if (label === "Notifications") {
-        setActiveDropdown(activeDropdown === 'notifications' ? null : 'notifications');
-        // Mark all notifications as read when opening
-        setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
+        const newState = activeDropdown === 'notifications' ? null : 'notifications';
+        setActiveDropdown(newState);
+        
+        if (newState === 'notifications') {
+          fetchNotifications();
+        }
       } else if (label === "Create Post" && onClick) {
         onClick();
       }
       return;
     }
     
+    // Handle theme toggle
     if (path === "/theme") {
       document.documentElement.classList.toggle('dark');
       return;
     }
     
+    // For all other paths (including /search, /profile, etc.), navigate directly
+    console.log('🚀 Navigating to:', path);
     setActiveDropdown(null);
     navigate(path);
   };
 
-  const handleSearchItemClick = (userId) => {
-    navigate(`/profile/${userId}`);
+  const handleSearchItemClick = (userId, e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    console.log('🔍 Search result clicked, navigating to user:', userId);
+    navigate(`/user/${userId}`);
     setActiveDropdown(null);
     setSearchQuery("");
     setSearchResults([]);
@@ -195,17 +305,88 @@ const SidebarLeft = () => {
     }
   };
 
-  // Dropdown position
-  const getDropdownPosition = () => {
-    return "left-16 top-4";
+  // Notification click handler
+  const handleNotificationClick = (notification, e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    console.log('🔔 Notification clicked:', notification);
+    
+    // Mark as read
+    if (!notification.isRead) {
+      setNotifications(prev =>
+        prev.map(n =>
+          n._id === notification._id ? { ...n, isRead: true } : n
+        )
+      );
+      setUnreadNotificationCount(prev => Math.max(0, prev - 1));
+    }
+    
+    // Navigate based on type
+    if (notification.post) {
+      console.log('🚀 Navigating to post:', notification.post._id);
+      navigate(`/post/${notification.post._id}`);
+    } else if (notification.sender) {
+      console.log('🚀 Navigating to user profile:', notification.sender._id);
+      navigate(`/user/${notification.sender._id}`);
+    }
+    
+    setActiveDropdown(null);
   };
 
+  // Get notification icon
+  const getNotificationIcon = (type) => {
+    const icons = {
+      'like': { emoji: '❤️', bg: 'bg-red-100', text: 'text-red-600' },
+      'comment': { emoji: '💬', bg: 'bg-blue-100', text: 'text-blue-600' },
+      'follow': { emoji: '👤', bg: 'bg-green-100', text: 'text-green-600' },
+      'admired': { emoji: '🌟', bg: 'bg-yellow-100', text: 'text-yellow-600' },
+      'default': { emoji: '🔔', bg: 'bg-purple-100', text: 'text-purple-600' }
+    };
+    
+    const config = icons[type] || icons.default;
+    
+    return (
+      <div className={`w-10 h-10 rounded-full ${config.bg} flex items-center justify-center flex-shrink-0`}>
+        <span className={`text-lg ${config.text}`}>{config.emoji}</span>
+      </div>
+    );
+  };
+
+  // Get time ago
+  const getTimeAgo = (dateString) => {
+    if (!dateString) return 'Recently';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now - date) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+    
+    return date.toLocaleDateString();
+  };
+
+  // Get badge count for menu
+  const getBadgeCount = (item) => {
+    if (item.label === "Chat") {
+      return chatUnreadCount;
+    }
+    if (item.label === "Notifications") {
+      return unreadNotificationCount;
+    }
+    return 0;
+  };
+
+  // Search dropdown
   const renderSearchDropdown = () => (
     <div 
       ref={dropdownRef}
-      className={`absolute ${getDropdownPosition()} bg-white rounded-2xl shadow-2xl border border-gray-200 w-80 z-50 max-h-[80vh] overflow-hidden`}
+      className={`absolute left-16 top-4 bg-white rounded-2xl shadow-2xl border border-gray-200 w-80 z-50 max-h-[80vh] overflow-hidden`}
     >
-      {/* Search Header */}
       <div className="p-4 border-b border-gray-200 bg-white sticky top-0">
         <div className="relative">
           <Search className="absolute left-3 top-3 text-gray-400 w-4 h-4" />
@@ -229,7 +410,6 @@ const SidebarLeft = () => {
         </div>
       </div>
 
-      {/* Search Results */}
       <div className="max-h-96 overflow-y-auto">
         {isSearchLoading ? (
           <div className="p-6 text-center">
@@ -251,7 +431,7 @@ const SidebarLeft = () => {
             {searchResults.map((user) => (
               <button
                 key={user._id}
-                onClick={() => handleSearchItemClick(user._id)}
+                onClick={(e) => handleSearchItemClick(user._id, e)}
                 className="w-full text-left px-4 py-3 hover:bg-purple-50 flex items-center gap-3 transition-colors border-b border-gray-100 last:border-b-0"
               >
                 <div className="relative">
@@ -291,28 +471,24 @@ const SidebarLeft = () => {
     </div>
   );
 
+  // Notifications dropdown
   const renderNotificationsDropdown = () => {
-    const unreadNotifications = notifications.filter(n => !n.read);
-    
     return (
       <div 
         ref={dropdownRef}
-        className={`absolute ${getDropdownPosition()} bg-white rounded-2xl shadow-2xl border border-gray-200 w-80 z-50 max-h-[80vh] overflow-hidden`}
+        className={`absolute left-16 top-4 bg-white rounded-2xl shadow-2xl border border-gray-200 w-80 z-50 max-h-[80vh] overflow-hidden`}
       >
-        {/* Notifications Header */}
         <div className="p-4 border-b border-gray-200 bg-white sticky top-0">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-gray-800">Notifications</h3>
               <p className="text-gray-500 text-sm">
-                {unreadNotifications.length > 0 
-                  ? `${unreadNotifications.length} new` 
-                  : "No new notifications"}
+                {unreadNotificationCount > 0 ? `${unreadNotificationCount} new` : "No new notifications"}
               </p>
             </div>
-            {unreadNotifications.length > 0 && (
+            {unreadNotificationCount > 0 && (
               <button 
-                onClick={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
+                onClick={handleMarkAllAsRead}
                 className="text-xs text-purple-600 hover:text-purple-700 font-medium"
               >
                 Mark all read
@@ -321,34 +497,41 @@ const SidebarLeft = () => {
           </div>
         </div>
 
-        {/* Notifications List */}
         <div className="max-h-96 overflow-y-auto">
-          {notifications.length > 0 ? (
+          {loadingNotifications ? (
+            <div className="p-6 text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
+              <p className="text-gray-500 text-sm mt-2">Loading notifications...</p>
+            </div>
+          ) : notifications.length > 0 ? (
             <div className="py-2">
               {notifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className={`px-4 py-3 hover:bg-gray-50 flex items-center gap-3 transition-colors border-b border-gray-100 last:border-b-0 ${
-                    !notification.read ? 'bg-blue-50' : ''
+                <button
+                  key={notification._id}
+                  onClick={(e) => handleNotificationClick(notification, e)}
+                  className={`w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-3 transition-colors border-b border-gray-100 last:border-b-0 ${
+                    !notification.isRead ? 'bg-blue-50' : ''
                   }`}
                 >
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    notification.type === 'like' ? 'bg-red-100 text-red-600' :
-                    notification.type === 'follow' ? 'bg-green-100 text-green-600' :
-                    'bg-blue-100 text-blue-600'
-                  }`}>
-                    <Bell size={16} />
-                  </div>
+                  {getNotificationIcon(notification.type)}
                   <div className="flex-1 min-w-0">
                     <p className="text-gray-800 text-sm">
-                      <span className="font-medium">{notification.user}</span> {notification.message}
+                      {notification.message || (
+                        notification.type === 'follow'
+                          ? `${notification.sender?.name} followed you`
+                          : notification.type === 'admired'
+                            ? `${notification.sender?.name} admired you`
+                            : `${notification.sender?.name} ${notification.type}ed`
+                      )}
                     </p>
-                    <p className="text-gray-400 text-xs">{notification.time}</p>
+                    <p className="text-gray-400 text-xs">
+                      {getTimeAgo(notification.createdAt)}
+                    </p>
                   </div>
-                  {!notification.read && (
+                  {!notification.isRead && (
                     <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
                   )}
-                </div>
+                </button>
               ))}
             </div>
           ) : (
@@ -360,36 +543,22 @@ const SidebarLeft = () => {
           )}
         </div>
 
-        {/* Notifications Footer */}
-        {notifications.length > 0 && (
-          <div className="p-3 border-t border-gray-200 bg-white sticky bottom-0">
-            <button 
-              onClick={() => {
-                navigate('/notifications');
-                setActiveDropdown(null);
-              }}
-              className="w-full text-center text-purple-600 hover:text-purple-700 text-sm font-medium py-2"
-            >
-              View All Notifications
-            </button>
-          </div>
-        )}
+        <div className="p-3 border-t border-gray-200 bg-white sticky bottom-0">
+          <button 
+            onClick={() => {
+              navigate('/notifications');
+              setActiveDropdown(null);
+            }}
+            className="w-full text-center text-purple-600 hover:text-purple-700 text-sm font-medium py-2"
+          >
+            View All Notifications
+          </button>
+        </div>
       </div>
     );
   };
 
-  // Get badge count for menu item
-  const getBadgeCount = (item) => {
-    if (item.label === "Chat") {
-      return chatUnreadCount;
-    }
-    if (item.label === "Notifications") {
-      return notifications.filter(n => !n.read).length;
-    }
-    return 0;
-  };
-
-  // Get badge color based on count
+  // Get badge color
   const getBadgeColor = (count) => {
     if (count > 9) return 'bg-red-600';
     if (count > 5) return 'bg-red-500';
@@ -405,66 +574,51 @@ const SidebarLeft = () => {
             const isActive = location.pathname === item.path || 
               (item.label === "Search" && activeDropdown === 'search') ||
               (item.label === "Notifications" && activeDropdown === 'notifications');
-            
+
             return (
-              <li
-                key={index}
-                className={`
-                  group
-                  w-10 h-10 
-                  flex items-center justify-center 
-                  rounded-xl 
-                  transition-all cursor-pointer relative
-                  ${isActive
-                    ? 'bg-yellow-400 text-gray-900' 
-                    : 'text-white hover:bg-yellow-400 hover:text-gray-900'
-                  }
-                `}
-                title={`${item.label}${badgeCount > 0 ? ` (${badgeCount})` : ''}`}
-                onClick={() => handleNavigation(item.path, item.label, item.onClick)}
-              >
-                {item.icon}
-                
-                {/* Badge for unread counts */}
-                {badgeCount > 0 && (
-                  <span className={`
-                    absolute -top-1 -right-1 ${getBadgeColor(badgeCount)} 
-                    text-white text-xs font-bold rounded-full 
-                    min-w-[18px] h-[18px] flex items-center justify-center 
-                    px-1 border-2 border-blue-900 shadow-sm
-                    ${badgeCount > 9 ? 'text-[10px]' : 'text-xs'}
-                    animate-pulse
-                  `}>
-                    {badgeCount > 9 ? '9+' : badgeCount}
-                  </span>
-                )}
+              <li key={index} className="relative">
+                <button
+                  type="button"
+                  className={`
+                    group w-10 h-10 flex items-center justify-center rounded-xl 
+                    transition-all cursor-pointer relative
+                    ${isActive ? 'bg-yellow-400 text-gray-900' : 'text-white hover:bg-yellow-400 hover:text-gray-900'}
+                    focus:outline-none focus:ring-2 focus:ring-yellow-300
+                  `}
+                  title={`${item.label}${badgeCount > 0 ? ` (${badgeCount})` : ''}`}
+                  onClick={(e) => handleNavigation(item.path, item.label, item.onClick, e)}
+                >
+                  {item.icon}
+                  
+                  {badgeCount > 0 && (
+                    <span className={`
+                      absolute -top-1 -right-1 ${getBadgeColor(badgeCount)} 
+                      text-white text-xs font-bold rounded-full 
+                      min-w-[18px] h-[18px] flex items-center justify-center 
+                      px-1 border-2 border-blue-900 shadow-sm
+                      ${badgeCount > 9 ? 'text-[10px]' : 'text-xs'} animate-pulse pointer-events-none
+                    `}>
+                      {badgeCount > 9 ? '9+' : badgeCount}
+                    </span>
+                  )}
+                </button>
               </li>
             );
           })}
         </ul>
 
-        {/* Dropdowns */}
         {activeDropdown === 'search' && renderSearchDropdown()}
         {activeDropdown === 'notifications' && renderNotificationsDropdown()}
       </div>
 
-      {/* CREATE POST MODAL */}
       {showCreatePostModal && (
         <CreatePostModal
           onClose={() => setShowCreatePostModal(false)}
-          onPostCreated={() => {
-            alert('Post created successfully!');
+          onPostCreated={(newPost) => {
+            console.log('Post created:', newPost);
+            setShowCreatePostModal(false);
           }}
         />
-      )}
-
-      {/* Info Debug (remove in production) */}
-      {process.env.NODE_ENV === 'development' && chatUnreadCount > 0 && (
-        <div className="fixed bottom-4 left-20 bg-black bg-opacity-70 text-white text-xs p-2 rounded-lg z-50">
-          📱 Chat: {chatUnreadCount} user(s) with unread messages
-          <br />
-          📨 Total: {totalUnreadMessages} unread messages
-        </div>
       )}
     </>
   );

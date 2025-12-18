@@ -1,20 +1,23 @@
-import React, { useState, useRef, useContext } from 'react';
+import React, { useState, useRef, useContext, useEffect } from 'react';
 import { postsAPI } from '../../services/api';
 import { AuthContext } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom'; // ADD THIS
 
-const CreatePostModal = ({ onClose, onPostCreated }) => {
+const CreatePostModal = ({ onClose, onPostCreated, postedOn = null }) => {
   const [content, setContent] = useState('');
   const [files, setFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
   const [location, setLocation] = useState('');
   const [hashtags, setHashtags] = useState('');
+  const [privacy, setPrivacy] = useState('public');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState('');
+  const [moderationWarning, setModerationWarning] = useState('');
+  const [isCheckingContent, setIsCheckingContent] = useState(false);
   const fileInputRef = useRef(null);
   const { userData } = useContext(AuthContext);
-  const navigate = useNavigate(); // ADD THIS
+  const navigate = useNavigate();
 
   const handleFileChange = (e) => {
     const selectedFiles = Array.from(e.target.files);
@@ -69,6 +72,42 @@ const CreatePostModal = ({ onClose, onPostCreated }) => {
     setPreviews(newPreviews);
   };
 
+  // Real-time content moderation check
+  useEffect(() => {
+    const checkContent = async () => {
+      if (!content.trim() || content.length < 3) {
+        setModerationWarning('');
+        return;
+      }
+
+      setIsCheckingContent(true);
+      try {
+        const response = await fetch('http://localhost:5002/moderate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: content })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.is_toxic && data.confidence > 0.6) {
+            setModerationWarning('⚠️ Your post contains words that may violate our community guidelines');
+          } else {
+            setModerationWarning('');
+          }
+        }
+      } catch (error) {
+        console.log('Moderation check unavailable');
+        setModerationWarning('');
+      } finally {
+        setIsCheckingContent(false);
+      }
+    };
+
+    const timeoutId = setTimeout(checkContent, 500); // Debounce
+    return () => clearTimeout(timeoutId);
+  }, [content]);
+
   
 const testBackend = async () => {
   try {
@@ -116,12 +155,21 @@ const testBackend = async () => {
     formData.append('content', content);
     if (location) formData.append('location', location);
     if (hashtags) formData.append('hashtags', hashtags);
+    formData.append('privacy', privacy);
     
-    // Add files - IMPORTANT: use 'files' (plural) as field name
-    files.forEach(file => {
-      console.log('➕ Adding file:', file.name, file.type, file.size);
-      formData.append('files', file); // 'files' not 'file'
-    });
+    // Add files only if they exist - IMPORTANT: use 'files' (plural) as field name
+    if (files.length > 0) {
+      files.forEach(file => {
+        console.log('➕ Adding file:', file.name, file.type, file.size);
+        formData.append('files', file); // 'files' not 'file'
+      });
+    }
+
+    // If this post is being created on another user's profile, include postedOn
+    if (postedOn) {
+      console.log('📌 Posting on profile:', postedOn);
+      formData.append('postedOn', postedOn);
+    }
 
     // Debug formData
     console.log('📦 FormData contents:');
@@ -134,8 +182,9 @@ const testBackend = async () => {
 // CHANGE THIS PART:
 console.log('📤 Sending request to /api/posts...');
 
-// ✅ FIXED: Use postsAPI.createPost with error handling
+// ✅ FIXED: Use postsAPI.createPost with error handling and proper axios response handling
 try {
+  setIsUploading(true);
   const response = await postsAPI.createPost(formData, (progressEvent) => {
     const progress = Math.round(
       (progressEvent.loaded * 100) / (progressEvent.total || 1)
@@ -144,44 +193,44 @@ try {
     setUploadProgress(progress);
   });
 
-  console.log('✅ Response from createPost:', response);
-  
-  // ✅ FIXED: response is already the data object
-  if (response && response.success) {
-    console.log('🎉 Post created successfully:', response.post);
+  console.log('✅ Raw response from createPost:', response);
+
+  const data = response?.data || response;
+
+  if (data && (data.success === true || data.success === undefined)) {
+    const createdPost = data.post || data.data || data;
+    console.log('🎉 Post created successfully:', createdPost);
     alert('Post created successfully!');
-    if (onPostCreated) onPostCreated(response.post);
+    if (onPostCreated) onPostCreated(createdPost);
     if (onClose) onClose();
   } else {
-    console.error('❌ Server error:', response?.message);
-    setError(response?.message || 'Failed to create post');
-    alert(response?.message || 'Failed to create post');
+    const serverMessage = data?.message || data?.error || 'Failed to create post';
+    console.error('❌ Server error:', serverMessage);
+    setError(serverMessage);
+    alert(serverMessage);
   }
 } catch (error) {
   console.error('❌ Catch block error:', error);
-  
-  // ✅ FIXED: Error format handling
+
   let errorMessage = 'Failed to create post';
-  if (error.message) {
-    errorMessage = error.message;
-  } else if (error.response?.data?.message) {
+  if (error.response?.data?.message) {
     errorMessage = error.response.data.message;
-  } else if (typeof error === 'object' && error.message) {
+  } else if (error.message) {
     errorMessage = error.message;
+  } else if (typeof error === 'string') {
+    errorMessage = error;
   }
-  
+
   setError(errorMessage);
   alert(errorMessage);
-  
-  // Redirect to login if token invalid
-  if (errorMessage.includes('token') || errorMessage.includes('auth') || 
-      errorMessage.includes('401')) {
-    localStorage.removeItem("trendzz_token");
+
+  if (errorMessage.toLowerCase().includes('token') || error.response?.status === 401) {
+    localStorage.removeItem('trendzz_token');
     navigate('/login');
   }
-}finally {
-      setIsUploading(false);
-    }
+} finally {
+  setIsUploading(false);
+}
   };
 
   const extractHashtags = () => {
@@ -206,27 +255,42 @@ try {
 
         {/* User Info */}
         <div className="p-4 border-b">
-          <div className="flex items-center space-x-3">
-           <img 
-               src={userData?.profilePicture || userData?.avatar || '/default-avatar.png'} 
-               alt="Profile"
-               className="w-10 h-10 rounded-full border-2 border-gray-200 object-cover"
-               onError={(e) => e.target.src = '/default-avatar.png'}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <img 
+                src={userData?.profilePicture || userData?.avatar || '/default-avatar.png'} 
+                alt="Profile"
+                className="w-12 h-12 rounded-full border-2 border-blue-400 object-cover shadow-md"
+                onError={(e) => e.target.src = '/default-avatar.png'}
               />
-            <div>
-              <h4 className="font-semibold text-gray-800">@{userData?.username || 'user'}</h4>
-              <select 
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                className="text-sm text-gray-600 bg-transparent border-none focus:outline-none"
-                disabled={isUploading}
-              >
-                <option value="">Add location</option>
-                <option value="Public">🌍 Public</option>
-                <option value="Friends">👥 Friends</option>
-                <option value="Private">🔒 Private</option>
-              </select>
+              <div>
+                <h4 className="font-bold text-gray-900">{userData?.name || userData?.username || 'user'}</h4>
+                <select 
+                  value={privacy}
+                  onChange={(e) => setPrivacy(e.target.value)}
+                  className="text-sm text-gray-700 bg-gray-100 border border-gray-300 rounded-full px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                  disabled={isUploading}
+                >
+                  <option value="public">🌍 Public</option>
+                  <option value="private">🔒 Private</option>
+                  <option value="my-eyes-only">👁️ My Eyes Only</option>
+                </select>
+              </div>
             </div>
+            
+            {location && (
+              <div className="text-sm text-gray-600 flex items-center">
+                <span className="mr-1">📍</span>
+                <input 
+                  type="text"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="Add location"
+                  className="border-none bg-transparent focus:outline-none text-gray-600"
+                  disabled={isUploading}
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -246,10 +310,23 @@ try {
               onChange={(e) => setContent(e.target.value)}
               onKeyUp={extractHashtags}
               placeholder="What's on your mind?"
-              className="w-full border-none focus:outline-none text-lg resize-none min-h-[120px] disabled:bg-gray-100"
+              className="w-full border-none focus:outline-none text-lg resize-none min-h-[120px] disabled:bg-gray-100 text-black"
               rows="4"
               disabled={isUploading}
             />
+
+            {/* Moderation Warning */}
+            {moderationWarning && (
+              <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                <svg className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm text-red-800 font-medium">{moderationWarning}</p>
+                  <p className="text-xs text-red-600 mt-1">Please review and edit your content before posting</p>
+                </div>
+              </div>
+            )}
             
             {/* Hashtags Preview */}
             {hashtags && (
@@ -359,9 +436,9 @@ try {
                 </button>
                 <button
                   type="submit"
-                  disabled={isUploading || (files.length === 0 && !content.trim())}
+                  disabled={isUploading || (files.length === 0 && !content.trim()) || moderationWarning}
                   className={`px-6 py-2 rounded-full font-semibold transition-all ${
-                    isUploading || (files.length === 0 && !content.trim())
+                    isUploading || (files.length === 0 && !content.trim()) || moderationWarning
                       ? 'bg-blue-200 text-blue-400 cursor-not-allowed'
                       : 'bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700'
                   }`}

@@ -18,23 +18,20 @@ const HomeFeed = () => {
     try {
       setLoading(true);
       console.log(`🔄 Fetching posts page ${pageNum}...`);
-      
-      const response = await postsAPI.getPosts(pageNum, 100);
-      
+      const limit = 20;
+      const response = await postsAPI.getAllPosts(pageNum, limit);
       console.log('📥 API Response:', response);
-      
-      // ✅ NEW FORMAT: response.data.posts access
-      // ✅ OLD FORMAT FALLBACK: response.posts
+
       const postsData = response.data?.posts || response.posts || [];
-      
+
       if (pageNum === 1) {
         setPosts(postsData);
       } else {
         setPosts(prev => [...prev, ...postsData]);
       }
-      
-      // Check if there are more posts
-      setHasMore(postsData.length === 100);
+
+      const totalPages = response.data?.pagination?.pages || Math.ceil((response.data?.pagination?.total || postsData.length) / limit);
+      setHasMore(pageNum < totalPages);
       
     } catch (error) {
       console.error('❌ Error fetching posts:', error);
@@ -54,40 +51,34 @@ const HomeFeed = () => {
       console.log('❤️ Liking post:', postId);
       
       const response = await postsAPI.likePost(postId);
-      console.log('Like response:', response);
+      console.log('✅ Like response:', response);
       
-      // ✅ NEW FORMAT: response.data contains the data
-      // ✅ OLD FORMAT: response directly contains data
-      const responseData = response.data || response;
+      // Backend returns: { success: true, likes: number, isLiked: boolean, likesList: [...] }
+      const data = response.data || response;
       
-      if (response.success || responseData.success) {
-        const successData = responseData.success ? responseData : response;
+      if (data.success) {
+        console.log('✅ Like saved to database. Updating UI...');
         
+        // Update post with database-saved data
         setPosts(prevPosts => 
           prevPosts.map(post => {
             if (post._id === postId) {
               return {
                 ...post,
-                // ✅ Handle both new and old response formats
-                likes: successData.data?.likes || 
-                      successData.likes || 
-                      successData.likedBy || 
-                      post.likes,
-                likesCount: successData.data?.likesCount || 
-                          successData.likesCount || 
-                          successData.likes || 
-                          (successData.likedBy?.length || 0) || 
-                          post.likesCount
+                likes: data.likesList || post.likes, // Use the likesList from database
+                likesCount: data.likes || post.likesCount // Use the count from database
               };
             }
             return post;
           })
         );
+        
+        console.log(`✅ Post ${postId} updated with ${data.likes} likes`);
       } else {
-        console.error('Like failed:', response.message || response.data?.message);
+        console.error('❌ Like failed:', data.message);
       }
     } catch (error) {
-      console.error('Error liking post:', error);
+      console.error('❌ Error liking post:', error);
       alert('Failed to like post');
     }
   };
@@ -98,43 +89,37 @@ const HomeFeed = () => {
       console.log('💬 Adding comment to post:', postId);
       
       const response = await postsAPI.addComment(postId, text);
-      console.log('Comment response:', response);
+      console.log('✅ Comment response:', response);
       
-      // ✅ NEW FORMAT: response.data contains the data
-      const responseData = response.data || response;
+      // Backend returns: { success: true, comment: {...}, totalComments: number }
+      const data = response.data || response;
       
-      if (response.success || responseData.success) {
-        const successData = responseData.success ? responseData : response;
+      if (data.success) {
+        console.log('✅ Comment saved to database. Updating UI...');
         
+        // Update post with database-saved comment
         setPosts(prevPosts => 
           prevPosts.map(post => {
             if (post._id === postId) {
               return {
                 ...post,
-                // ✅ Handle both new and old response formats
-                comments: [...(post.comments || []), 
-                          successData.data?.comment || 
-                          successData.comment || 
-                          successData.data],
-                commentsCount: successData.data?.totalComments || 
-                              successData.totalComments || 
-                              successData.commentsCount || 
-                              ((post.commentsCount || 0) + 1)
+                comments: [...(post.comments || []), data.comment], // Add the saved comment
+                commentsCount: data.totalComments || ((post.commentsCount || 0) + 1) // Use database count
               };
             }
             return post;
           })
         );
         
-        // ✅ Return comment for PostCard optimistic update
+        console.log(`✅ Comment added to post ${postId}. Total comments: ${data.totalComments}`);
+        
+        // Return comment for PostCard optimistic update
         return { 
-          comment: successData.data?.comment || 
-                  successData.comment || 
-                  successData.data 
+          comment: data.comment 
         };
       } else {
-        console.error('Comment failed:', response.message || responseData.message);
-        throw new Error(response.message || responseData.message);
+        console.error('Comment failed:', data.message);
+        throw new Error(data.message);
       }
     } catch (error) {
       console.error('Error adding comment:', error);
@@ -171,33 +156,43 @@ const HomeFeed = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4">
+    <div className="w-full max-w-5xl mx-auto px-6 py-8">
       {/* Create Post Card */}
-      <div className="bg-white rounded-xl shadow-md border border-gray-200 p-4 mb-6">
-        <div className="flex items-center space-x-4">
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl shadow-lg border border-gray-200 p-6 mb-6 hover:shadow-xl transition-all">
+        <div className="flex items-center space-x-4 mb-4">
           <img 
-            src={userData?.profilePicture || '/default-avatar.png'} 
+            src={userData?.profilePicture || userData?.avatar || '/default-avatar.png'} 
             alt="Profile"
-            className="w-12 h-12 rounded-full border-2 border-gray-200 object-cover"
+            className="w-14 h-14 rounded-full border-3 border-white shadow-md object-cover ring-2 ring-blue-400"
             onError={(e) => {
               e.target.src = '/default-avatar.png';
               e.target.onerror = null;
             }}
           />
           <button 
+            type="button"
             onClick={() => setShowCreateModal(true)}
-            className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full px-6 py-3 text-left transition-colors"
+            className="flex-1 bg-white hover:bg-gray-50 text-gray-700 rounded-full px-6 py-4 text-left transition-all shadow-md hover:shadow-lg font-medium"
           >
-            What's on your mind?
+            What's on your mind, {userData?.name || userData?.username}?
           </button>
         </div>
-        <div className="flex justify-center space-x-6 mt-4">
+        <div className="flex justify-around space-x-4 pt-4 border-t border-gray-200">
           <button 
+            type="button"
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center space-x-2 text-gray-700 hover:text-blue-600 transition-colors"
+            className="flex items-center space-x-2 text-gray-700 hover:text-blue-600 transition-all px-4 py-2 rounded-lg hover:bg-white"
           >
-            <span className="text-xl">📷</span>
-            <span>Photo/Video</span>
+            <span className="text-2xl">📷</span>
+            <span className="font-medium">Photo/Video</span>
+          </button>
+          <button 
+            type="button"
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center space-x-2 text-gray-700 hover:text-green-600 transition-all px-4 py-2 rounded-lg hover:bg-white"
+          >
+            <span className="text-2xl">😊</span>
+            <span className="font-medium">Feeling/Activity</span>
           </button>
         </div>
       </div>
@@ -214,6 +209,7 @@ const HomeFeed = () => {
           <h3 className="text-xl font-semibold text-gray-800 mb-2">No posts yet</h3>
           <p className="text-gray-600 mb-6">Be the first to share something!</p>
           <button 
+            type="button"
             onClick={() => setShowCreateModal(true)}
             className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-full transition-colors"
           >
@@ -227,8 +223,39 @@ const HomeFeed = () => {
               key={post._id}
               post={post}
               currentUserId={userData?._id}
+              userData={userData}
               onLikeToggle={handleLike}
               onAddComment={handleAddComment}
+              onAddReaction={async (postId, reactionType) => {
+                try {
+                  await postsAPI.addReaction(postId, reactionType);
+                } catch (error) {
+                  console.error('Reaction error:', error);
+                }
+              }}
+              onEditComment={async (postId, commentId, text) => {
+                try {
+                  await postsAPI.editComment(postId, commentId, text);
+                } catch (error) {
+                  console.error('Edit comment error:', error);
+                }
+              }}
+              onDeleteComment={async (postId, commentId) => {
+                try {
+                  await postsAPI.deleteComment(postId, commentId);
+                } catch (error) {
+                  console.error('Delete comment error:', error);
+                }
+              }}
+              onReplyToComment={async (postId, commentId, text) => {
+                try {
+                  const result = await postsAPI.replyToComment(postId, commentId, text);
+                  return result.data;
+                } catch (error) {
+                  console.error('Reply error:', error);
+                  throw error;
+                }
+              }}
               formatDate={formatDate}
             />
           ))}
@@ -239,6 +266,7 @@ const HomeFeed = () => {
       {hasMore && posts.length > 0 && (
         <div className="text-center mt-8">
           <button 
+            type="button"
             onClick={() => {
               const nextPage = page + 1;
               setPage(nextPage);

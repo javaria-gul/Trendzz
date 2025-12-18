@@ -8,8 +8,13 @@ import {
   deletePost,
   getUserPosts,
   toggleLike,
-  addCommentNew ,
-   debugCheckPosts  
+  addCommentNew,
+  debugCheckPosts,
+  addReaction,
+  editComment,
+  deleteComment,
+  replyToComment,
+  sharePost
 } from "../controllers/postController.js";
 import upload from "../middleware/uploadMiddleware.js";
 import auth from "../middleware/authMiddleware.js";
@@ -39,12 +44,21 @@ router.delete("/:id", auth, deletePost);
 router.get("/user/:userId", getUserPosts);
 
 // FOR BACKWARD COMPATIBILITY
-
 router.post("/:id/comment", auth, addComment);
-// postRoutes.js mein
+
+// Debug route
 router.get("/debug/check", debugCheckPosts);
 
-// ✅ Simple test route (ONLY THIS ADDITION)
+// New routes for reactions and enhanced comments
+router.post("/:postId/reaction", auth, addReaction);
+router.put("/:postId/comment/:commentId", auth, editComment);
+router.delete("/:postId/comment/:commentId", auth, deleteComment);
+router.post("/:postId/comment/:commentId/reply", auth, replyToComment);
+
+// Share post route
+router.post("/:postId/share", auth, sharePost);
+
+// ✅ Simple test route
 router.get("/test", (req, res) => {
   console.log("✅ /api/posts/test called");
   res.json({ 

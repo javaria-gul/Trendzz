@@ -1,0 +1,10 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+pymongo==4.6.1
+numpy==1.24.3
+pandas==2.1.4
+scikit-learn==1.3.2  # ✅ ADDED FOR KNN
+joblib==1.3.2
+python-multipart==0.0.6
+python-dotenv==1.0.0

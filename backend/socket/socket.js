@@ -2,6 +2,7 @@ import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import { Chat, Message } from "../models/Chat.js";
+import { createNotificationSafely } from '../utils/notificationHelper.js';
 
 const setupSocket = (server) => {
   const io = new Server(server, {
@@ -59,6 +60,14 @@ const setupSocket = (server) => {
     onlineUsers.set(socket.id, socket.userId);
     userSockets.set(socket.userId, socket.id);
     userRooms.set(socket.userId, []);
+    
+    // Join user's personal rooms (legacy id and namespaced) for compatibility
+    try {
+      socket.join(socket.userId);
+      socket.join(`user:${socket.userId}`);
+    } catch (e) {
+      console.error('❌ Error joining user rooms:', e.message);
+    }
 
     // Broadcast user online status
     socket.broadcast.emit("user_online", {
@@ -72,8 +81,8 @@ const setupSocket = (server) => {
       }
     });
 
-    // Join user's personal room
-    socket.join(socket.userId);
+    // (already joined above) ensure room membership logged
+    console.log(`📥 User ${socket.userId} joined personal rooms: [${socket.userId}, user:${socket.userId}]`);
 
     socket.on("join_chat", (data) => {
       const { chatId } = data;
@@ -206,6 +215,26 @@ const setupSocket = (server) => {
         });
 
         console.log(`📢 Message broadcasted to chat ${chatId}`);
+
+          // ✅ STEP 5: Create message notifications for other participants (non-blocking)
+          try {
+            const recipients = chat.participants.filter(pid => pid.toString() !== socket.userId);
+            const notifyPromises = recipients.map(recipientId =>
+              createNotificationSafely({
+                recipientId,
+                senderId: socket.userId,
+                type: 'message',
+                io,
+                data: { text: (text || '').substring(0, 100), chatId }
+              }).catch(err => console.error('Message notify error:', err.message))
+            );
+            // Fire and forget
+            Promise.allSettled(notifyPromises).then(() => {
+              console.log('📬 Message notification attempts completed');
+            });
+          } catch (notifyErr) {
+            console.error('❌ Message notification scheduling failed:', notifyErr.message);
+          }
 
         // ✅ STEP 3: Emit chat update to all participants
         chat.participants.forEach(participantId => {
@@ -352,6 +381,14 @@ const setupSocket = (server) => {
         userSockets.delete(socket.userId);
         userRooms.delete(socket.userId);
 
+        // Leave rooms explicitly
+        try {
+          socket.leave(socket.userId);
+          socket.leave(`user:${socket.userId}`);
+        } catch (e) {
+          // ignore
+        }
+
         // Broadcast user offline status
         socket.broadcast.emit("user_offline", {
           userId: socket.userId,
@@ -375,6 +412,13 @@ const setupSocket = (server) => {
   setInterval(() => {
     io.emit("ping", { timestamp: Date.now() });
   }, 30000);
+
+  // Attach maps for external inspection (debug endpoints/controllers can read these)
+  io.onlineUsers = onlineUsers; // socketId -> userId
+  io.userSockets = userSockets; // userId -> socketId
+  io.userRooms = userRooms; // userId -> [roomIds]
+
+  console.log(`📡 Socket diagnostics attached: onlineUsers=${onlineUsers.size} connections`);
 
   return io;
 };

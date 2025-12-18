@@ -1,9 +1,8 @@
 import User from "../models/User.js";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-
+import bcrypt from "bcryptjs";import jwt from "jsonwebtoken";
 import cloudinary from '../config/cloudinary.js';
 import multer from 'multer';
+import { createNotification } from './notificationController.js';
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage();
@@ -204,9 +203,153 @@ export const uploadProfileImage = async (req, res) => {
   }
 };
 
-// In userController.js - UPDATE registerUser and loginUser
+export const followUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const currentUser = req.user;
+
+    console.log("🔵 FOLLOW REQUEST:", {
+      follower: currentUser._id,
+      following: userId
+    });
+
+    // Find the user to follow
+    const userToFollow = await User.findById(userId);
+    
+    if (!userToFollow) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+    }
+
+    // Check if trying to follow self
+    if (currentUser._id.toString() === userId) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'You cannot follow yourself' 
+      });
+    }
+
+    // Check if already following
+    if (currentUser.following.includes(userId)) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Already following this user' 
+      });
+    }
+
+    // Check if blocked
+    if (currentUser.blockedUsers && currentUser.blockedUsers.includes(userId)) {
+      return res.status(403).json({ 
+        success: false,
+        message: 'You have blocked this user' 
+      });
+    }
+
+    // Update following and followers
+    currentUser.following.push(userId);
+    userToFollow.followers.push(currentUser._id);
+    
+    await currentUser.save();
+    await userToFollow.save();
+
+    console.log("✅ FOLLOW SUCCESS:", {
+      follower: currentUser._id,
+      following: userId,
+      followerFollowingCount: currentUser.following.length,
+      userFollowersCount: userToFollow.followers.length
+    });
+
+    // ✅ NOTIFICATION CREATE KARO
+    try {
+      await createNotification(
+        userToFollow._id,        // recipient (jo follow hua)
+        currentUser._id,         // sender (jo follow kar raha)
+        'follow',                // type
+        null,
+        null,
+        req.io
+      );
+      console.log("📢 Follow notification created");
+    } catch (notificationError) {
+      console.error("❌ Notification error (non-critical):", notificationError);
+      // Don't fail the follow if notification fails
+    }
+
+    res.json({
+      success: true,
+      message: 'Successfully followed user',
+      data: {
+        following: currentUser.following,
+        followers: userToFollow.followers,
+        followingCount: currentUser.following.length,
+        followersCount: userToFollow.followers.length
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Follow user error:", error);
+    res.status(500).json({ 
+      success: false,
+      message: error.message || 'Server error during follow' 
+    });
+  }
+};
+
+// ✅ UNFOLLOW USER FUNCTION - OPTIONAL
+export const unfollowUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const currentUser = req.user;
+
+    const userToUnfollow = await User.findById(userId);
+    
+    if (!userToUnfollow) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+    }
+
+    // Remove from following and followers
+    currentUser.following = currentUser.following.filter(id => id.toString() !== userId);
+    userToUnfollow.followers = userToUnfollow.followers.filter(id => id.toString() !== currentUser._id.toString());
+    
+    await currentUser.save();
+    await userToUnfollow.save();
+
+    res.json({
+      success: true,
+      message: 'Successfully unfollowed user',
+      data: {
+        following: currentUser.following,
+        followers: userToUnfollow.followers
+      }
+    });
+
+  } catch (error) {
+    console.error("Unfollow user error:", error);
+    res.status(500).json({ 
+      success: false,
+      message: error.message 
+    });
+  }
+};
+
 export const registerUser = async (req, res) => {
   const { name, email, password } = req.body;
+
+  // Debug logging to diagnose signup network issues
+  try {
+    console.log('--- Register request received ---');
+    console.log('Headers:', req.headers);
+    console.log('Body:', { name: req.body.name, email: req.body.email });
+    console.log('OriginalUrl:', req.originalUrl);
+    console.log('--------------------------------');
+  } catch (e) {
+    console.error('Error logging register request:', e);
+  }
 
   try {
     const userExists = await User.findOne({ email });
@@ -221,23 +364,38 @@ export const registerUser = async (req, res) => {
       name, 
       email, 
       password: hashedPassword,
-      blockedUsers: []
+      blockedUsers: [],
+      firstLogin: true  // ✅ Ensure firstLogin is set
     });
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "30d" });
+
+    // ✅ FIX: Complete user response
+    const userResponse = {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      username: user.username || '',
+      avatar: user.avatar || '',
+      bio: user.bio || '',
+      coverImage: user.coverImage || '',
+      role: user.role || '',
+      semester: user.semester || '',
+      batch: user.batch || '',
+      subjects: user.subjects || [],
+      followers: user.followers || [],
+      following: user.following || [],
+      admirersCount: user.admirersCount || 0,
+      firstLogin: user.firstLogin,  // ✅ DIRECT VALUE
+      blockedUsers: user.blockedUsers || [],
+      createdAt: user.createdAt
+    };
 
     res.status(201).json({ 
       success: true,  // ✅ Add success flag
       message: "Registration successful",
       token,  // ✅ Keep token at root
-      user: {  // ✅ Wrap user data in user object
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        username: user.username || '',
-        profilePicture: user.profilePicture || '',
-        firstLogin: user.firstLogin !== false
-      }
+      user: userResponse  // ✅ Complete user data
     });
   } catch (error) {
     res.status(500).json({ 
@@ -256,19 +414,33 @@ export const loginUser = async (req, res) => {
     if (user && (await bcrypt.compare(password, user.password))) {
       const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "30d" });
       
+      // ✅ FIX: firstLogin ka proper value bhejo (user model se directly)
+      const userResponse = {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        username: user.username || '',
+        avatar: user.avatar || '',  // ✅ profilePicture ki jagah avatar
+        bio: user.bio || '',
+        coverImage: user.coverImage || '',
+        role: user.role || '',
+        semester: user.semester || '',
+        batch: user.batch || '',
+        subjects: user.subjects || [],
+        followers: user.followers || [],
+        following: user.following || [],
+        admirersCount: user.admirersCount || 0,
+        firstLogin: user.firstLogin,  // ✅ DIRECT VALUE (true/false)
+        blockedUsers: user.blockedUsers || [],
+        createdAt: user.createdAt,
+        lastSeen: user.lastSeen
+      };
+      
       res.json({ 
         success: true,  // ✅ Add success flag
         message: "Login successful",
         token,  // ✅ Keep token at root
-        user: {  // ✅ Wrap user data in user object
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          username: user.username || '',
-          profilePicture: user.profilePicture || '',
-          firstLogin: user.firstLogin !== false,
-          blockedUsers: user.blockedUsers || []
-        }
+        user: userResponse  // ✅ Complete user data
       });
     } else {
       res.status(400).json({ 
@@ -284,12 +456,14 @@ export const loginUser = async (req, res) => {
   }
 };
 
-
 // Get other user's profile
+// Get other user's profile - UPDATED TO INCLUDE PRIVACY SETTINGS
 export const getOtherUserProfile = async (req, res) => {
   try {
     const { userId } = req.params;
     const currentUserId = req.user.id;
+
+    console.log("🔍 Fetching profile for user:", userId, "by:", currentUserId);
 
     // Check if current user has blocked this user
     const currentUser = await User.findById(currentUserId);
@@ -300,8 +474,9 @@ export const getOtherUserProfile = async (req, res) => {
       });
     }
 
+    // Get user WITH privacySettings
     const user = await User.findById(userId)
-      .select('-password -email -emailVerificationToken -emailVerificationExpires')
+      .select('-password -emailVerificationToken -emailVerificationExpires')
       .populate('followers', 'name username avatar')
       .populate('following', 'name username avatar');
 
@@ -312,19 +487,57 @@ export const getOtherUserProfile = async (req, res) => {
       });
     }
 
+    // Ensure privacySettings exist with default values
+    const userWithPrivacy = {
+      ...user.toObject(),
+      privacySettings: user.privacySettings || {
+        showEmail: true,
+        showFollowers: true,
+        showFollowing: true,
+        allowMessages: true,
+        showOnlineStatus: true
+      }
+    };
+
     // Check if current user is following this user
     const isFollowing = currentUser.following && currentUser.following.includes(userId);
-    
-    // Check if current user has admired this user (you might need to implement this logic)
-    const hasAdmired = false; // Implement admiration logic if needed
+    const hasAdmired = false;
+
+    // Prepare response data
+    const responseData = {
+      _id: userWithPrivacy._id,
+      name: userWithPrivacy.name,
+      username: userWithPrivacy.username,
+      email: userWithPrivacy.privacySettings?.showEmail ? userWithPrivacy.email : undefined,
+      bio: userWithPrivacy.bio || '',
+      avatar: userWithPrivacy.avatar,
+      coverImage: userWithPrivacy.coverImage,
+      role: userWithPrivacy.role,
+      semester: userWithPrivacy.semester,
+      batch: userWithPrivacy.batch,
+      subjects: userWithPrivacy.subjects || [],
+      followers: userWithPrivacy.privacySettings?.showFollowers ? userWithPrivacy.followers : [],
+      following: userWithPrivacy.privacySettings?.showFollowing ? userWithPrivacy.following : [],
+      admirers: userWithPrivacy.admirers || [],
+      admirersCount: userWithPrivacy.admirersCount || 0,
+      privacySettings: userWithPrivacy.privacySettings,
+      createdAt: userWithPrivacy.createdAt,
+      lastSeen: userWithPrivacy.lastSeen,
+      isFollowing,
+      hasAdmired,
+      followersCount: userWithPrivacy.followers?.length || 0,
+      followingCount: userWithPrivacy.following?.length || 0,
+      postsCount: userWithPrivacy.postsCount || 0
+    };
+
+    console.log("📤 Sending profile data with privacy settings:", {
+      name: responseData.name,
+      allowMessages: responseData.privacySettings?.allowMessages
+    });
 
     res.json({
       success: true,
-      data: {
-        ...user.toObject(),
-        isFollowing,
-        hasAdmired
-      }
+      data: responseData
     });
 
   } catch (error) {
@@ -451,7 +664,7 @@ export const getUserProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
       .select('-password -emailVerificationToken -emailVerificationExpires')
-      .populate('blockedUsers', 'name username avatar'); // Populate blocked users
+      .populate('blockedUsers', 'name username avatar role'); // Populate with more fields
 
     if (!user) {
       return res.status(404).json({ 
@@ -632,6 +845,153 @@ export const debugProfileCheck = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Debug failed"
+    });
+  }
+};
+
+// Update privacy settings
+export const updatePrivacySettings = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { privacySettings } = req.body;
+
+    console.log("🛡️ Updating privacy settings for user:", userId);
+    console.log("📋 New privacy settings:", privacySettings);
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { privacySettings },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Privacy settings updated successfully",
+      user: updatedUser
+    });
+
+  } catch (error) {
+    console.error("Update privacy settings error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while updating privacy settings"
+    });
+  }
+};
+
+// Alternative endpoint for privacy settings
+export const updateUserPrivacy = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { privacySettings } = req.body;
+
+    console.log("🛡️ UPDATING PRIVACY - User:", userId);
+    console.log("📋 Privacy settings:", privacySettings);
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { privacySettings },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    res.json({
+      success: true,
+      message: "Privacy settings updated",
+      user: updatedUser
+    });
+
+  } catch (error) {
+    console.error("Privacy update error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update privacy settings"
+    });
+  }
+};
+// Debug: Check user's current privacy settings
+export const debugPrivacySettings = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('privacySettings name email');
+    
+    res.json({
+      success: true,
+      user: {
+        name: user.name,
+        email: user.email,
+        privacySettings: user.privacySettings
+      }
+    });
+  } catch (error) {
+    console.error("Debug privacy error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Debug failed"
+    });
+  }
+};
+// Get detailed following list
+export const getFollowingList = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const user = await User.findById(userId)
+      .populate('following', 'name username avatar bio role semester batch')
+      .select('following');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      following: user.following || []
+    });
+
+  } catch (error) {
+    console.error("Get following list error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching following list"
+    });
+  }
+};
+
+// Get detailed followers list
+export const getFollowersList = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const user = await User.findById(userId)
+      .populate('followers', 'name username avatar bio role semester batch')
+      .select('followers');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      followers: user.followers || []
+    });
+
+  } catch (error) {
+    console.error("Get followers list error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching followers list"
     });
   }
 };

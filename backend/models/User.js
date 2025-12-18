@@ -36,11 +36,31 @@ const userSchema = new mongoose.Schema({
   avatar: { type: String, default: "/avatars/avatar1.png" },
    coverImage: { type: String, default: "" }, // ✅ Make sure this exists
   bio: { type: String, default: "" },
+  // ML Recommendation fields
+  batch: {
+    type: String,
+    default: ''
+  },
+  semester: {
+    type: String,
+    default: ''
+  },
+  department: {
+    type: String,
+    default: ''
+  },
+  role: {
+    type: String,
+    enum: ['student', 'faculty', 'admin'],
+    default: 'student'
+  },
+  interests: [{
+    type: String
+  }],
+  skills: [{
+    type: String
+  }],
   
-
-  role: { type: String, enum: ["student", "faculty"], default: null },
-  semester: { type: String, default: null },
-  batch: { type: String, default: null },
   subjects: { type: [String], default: [] },
 
   following: { type: [mongoose.Schema.Types.ObjectId], ref: "User", default: [] },
@@ -60,13 +80,12 @@ lastSeen: { type: Date, default: Date.now },
 
   // Privacy settings
   privacySettings: {
-    profilePublic: { type: Boolean, default: true },
-    showEmail: { type: Boolean, default: false },
+    showEmail: { type: Boolean, default: true },
     showFollowers: { type: Boolean, default: true },
     showFollowing: { type: Boolean, default: true },
     allowMessages: { type: Boolean, default: true },
     showOnlineStatus: { type: Boolean, default: true }
-  }
+  },
 
 }, { timestamps: true });
 

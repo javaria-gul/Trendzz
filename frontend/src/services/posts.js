@@ -8,10 +8,8 @@ export const postsAPI = {
   
   // Create post with media (multipart/form-data)
   createPost: (formData, onUploadProgress) => 
+    // Do not set Content-Type header manually so browser/axios can set proper boundary
     API.post('/posts', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      },
       onUploadProgress
     }),
   
@@ -34,7 +32,24 @@ export const postsAPI = {
   // ✅ For backward compatibility with existing code
   getFeed: (params) => API.get("/posts", { params }),
   reactPost: (postId, type) => API.post(`/posts/${postId}/react`, { type }),
-  commentPost: (postId, text) => API.post(`/posts/${postId}/comment`, { text })
+  commentPost: (postId, text) => API.post(`/posts/${postId}/comment`, { text }),
+  
+  // ✅ New enhanced features
+  addReaction: (postId, reactionType) => 
+    API.post(`/posts/${postId}/reaction`, { reactionType }),
+  
+  editComment: (postId, commentId, text) => 
+    API.put(`/posts/${postId}/comment/${commentId}`, { text }),
+  
+  deleteComment: (postId, commentId) => 
+    API.delete(`/posts/${postId}/comment/${commentId}`),
+  
+  replyToComment: (postId, commentId, text) => 
+    API.post(`/posts/${postId}/comment/${commentId}/reply`, { text }),
+  
+  // Share post
+  sharePost: (postId) => 
+    API.post(`/posts/${postId}/share`)
 };
 
 // ✅ Export individual functions for backward compatibility
@@ -44,3 +59,12 @@ export const reactPost = (postId, type) => API.post(`/posts/${postId}/react`, { 
 export const commentPost = (postId, text) => API.post(`/posts/${postId}/comment`, { text });
 
 export default postsAPI;
+export const getUserPosts = async (userId) => {
+  try {
+    const response = await API.get(`/posts/user/${userId}`);
+    return response;
+  } catch (error) {
+    console.error("Get user posts error:", error);
+    throw error;
+  }
+};

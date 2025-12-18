@@ -15,7 +15,9 @@ import {
   getMessages, 
   markAsRead, 
   startChat, 
-  getChats
+  getChats,
+  deleteChat,
+  deleteMessage
 } from "../services/chat";
 import { SocketContext } from "../context/SocketContext";
 import { AuthContext } from "../context/AuthContext";
@@ -81,10 +83,12 @@ const ChatWindow = () => {
           if (messagesResponse.data?.success) {
             const loadedMessages = messagesResponse.data.data || [];
             setMessages(loadedMessages);
-            
-            // Mark as read
-            await markAsRead(chatId);
           }
+          
+          // ✅ IMMEDIATELY mark messages as read when chat opens
+          markAsRead(chatId).then(() => {
+            console.log('✅ Messages marked as read on chat open:', chatId);
+          }).catch(err => console.error('Error marking as read on open:', err));
         }
         
       } catch (error) {
@@ -114,6 +118,14 @@ const ChatWindow = () => {
           
           return [...prev, data.message];
         });
+        
+        // ✅ Immediately mark as read since user is actively viewing this chat
+        // This ensures badge updates instantly when receiving messages
+        setTimeout(() => {
+          markAsRead(chatId).then(() => {
+            console.log('✅ New message marked as read:', chatId);
+          }).catch(err => console.error('Error marking new message as read:', err));
+        }, 300); // Small delay to ensure message is rendered
       }
     };
 
@@ -154,8 +166,20 @@ const ChatWindow = () => {
     const handleMessageRead = (data) => {
       if (data.chatId === chatId && data.messageId) {
         setMessages(prev => prev.map(msg => 
-          msg._id === data.messageId ? { ...msg, status: 'read' } : msg
+          msg._id === data.messageId ? { ...msg, status: 'read', readBy: [...(msg.readBy || []), userData._id] } : msg
         ));
+      }
+    };
+
+    const handleMessageDeleted = (data) => {
+      if (data.chatId === chatId) {
+        if (data.deleteType === 'forEveryone') {
+          setMessages(prev => prev.map(msg => 
+            msg._id === data.messageId 
+              ? { ...msg, deleted: true, text: 'This message was deleted' }
+              : msg
+          ));
+        }
       }
     };
 
@@ -165,6 +189,7 @@ const ChatWindow = () => {
     socket.on("message_sent", handleMessageSent);
     socket.on("message_delivered", handleMessageDelivered);
     socket.on("message_read", handleMessageRead);
+    socket.on("message_deleted", handleMessageDeleted);
 
     // Join chat room
     socket.emit("join_chat", { chatId });
@@ -176,6 +201,7 @@ const ChatWindow = () => {
       socket.off("message_sent", handleMessageSent);
       socket.off("message_delivered", handleMessageDelivered);
       socket.off("message_read", handleMessageRead);
+      socket.off("message_deleted", handleMessageDeleted);
       
       // Leave chat room
       socket.emit("leave_chat", { chatId });
@@ -186,6 +212,34 @@ const ChatWindow = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Mark messages as read when user scrolls to bottom or stays in chat
+  useEffect(() => {
+    if (chatId && messages.length > 0 && !loading && userData?._id) {
+      // Create intersection observer to detect when user scrolls to bottom
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              // User has scrolled to bottom and can see messages
+              markAsRead(chatId).then(() => {
+                console.log('✅ Messages marked as read (user viewed):', chatId);
+              }).catch(err => console.error('Error marking as read:', err));
+            }
+          });
+        },
+        { threshold: 0.5 } // Trigger when 50% of element is visible
+      );
+
+      if (messagesEndRef.current) {
+        observer.observe(messagesEndRef.current);
+      }
+
+      return () => {
+        observer.disconnect();
+      };
+    }
+  }, [chatId, messages.length, loading, userData]);
 
   // Close emoji picker when clicking outside
   useEffect(() => {
@@ -229,6 +283,9 @@ const ChatWindow = () => {
       
       socket?.emit("typing_stop", { chatId });
       
+      // Mark chat as read since user is actively sending messages (they're obviously viewing it)
+      markAsRead(chatId).catch(err => console.error('Error marking as read:', err));
+      
     } catch (error) {
       console.error("Send message error:", error);
       setMessages(prev => prev.map(msg => 
@@ -258,11 +315,14 @@ const ChatWindow = () => {
   const handleDeleteChat = async () => {
     if (!chatId) return;
     
-    if (window.confirm("Are you sure you want to delete this chat?")) {
+    if (window.confirm("Are you sure you want to delete this chat? This action cannot be undone.")) {
       try {
-        navigate('/');
+        await deleteChat(chatId);
+        console.log('✅ Chat deleted successfully');
+        navigate('/chat');
       } catch (error) {
         console.error("Delete chat error:", error);
+        alert('Failed to delete chat. Please try again.');
       }
     }
     setShowMenu(false);
@@ -271,7 +331,31 @@ const ChatWindow = () => {
   // Navigate to user profile
   const handleProfileClick = () => {
     if (otherUser) {
-      navigate(`/profile/${otherUser._id}`);
+      navigate(`/user/${otherUser._id}`);
+    }
+  };
+
+  // Handle delete message
+  const handleDeleteMessage = async (messageId, deleteType) => {
+    try {
+      await deleteMessage(messageId, deleteType);
+      
+      if (deleteType === 'forEveryone') {
+        // Update message to show as deleted
+        setMessages(prev => prev.map(msg => 
+          msg._id === messageId 
+            ? { ...msg, deleted: true, text: 'This message was deleted', showDeleteMenu: false }
+            : msg
+        ));
+      } else {
+        // Remove message from local state
+        setMessages(prev => prev.filter(msg => msg._id !== messageId));
+      }
+      
+      console.log(`✅ Message deleted (${deleteType})`);
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      alert(error.response?.data?.message || 'Failed to delete message');
     }
   };
 
@@ -300,24 +384,26 @@ const ChatWindow = () => {
   };
 
   // Get message status icon
-  const getMessageStatus = (message) => {
+  const getMessageStatus = (message, isRecipientOnline = false) => {
     if (message.isSending || message.status === 'sending') {
       return <Loader2 className="w-3 h-3 animate-spin text-gray-400" />;
     }
     
-    if (message.status === 'read') {
-      return <CheckCheck className="w-3 h-3 text-blue-500" />;
+    // Check if message has been seen/read by others
+    const hasBeenSeen = message.readBy && message.readBy.length > 1;
+    
+    if (hasBeenSeen) {
+      // Red double tick when message is seen
+      return <CheckCheck className="w-3 h-3 text-red-500" />;
     }
     
-    if (message.status === 'delivered') {
+    // Double tick (gray) when recipient is online but hasn't seen it
+    if (isRecipientOnline) {
       return <CheckCheck className="w-3 h-3 text-gray-400" />;
     }
     
-    if (message.status === 'sent') {
-      return <Check className="w-3 h-3 text-gray-400" />;
-    }
-    
-    return <Check className="w-3 h-3 text-gray-300" />;
+    // Single tick when recipient is offline
+    return <Check className="w-3 h-3 text-gray-400" />;
   };
 
   // Loading state
@@ -462,34 +548,104 @@ const ChatWindow = () => {
           </div>
         ) : (
           <div className="space-y-3">
-            {messages.map((msg, index) => (
-              <div
-                key={msg._id || index}
-                className={`flex ${msg.sender?._id === userData?._id ? 'justify-end' : 'justify-start'}`}
-              >
+            {messages.map((msg, index) => {
+              // Skip messages deleted for this user
+              if (msg.deletedFor && msg.deletedFor.includes(userData?._id)) {
+                return null;
+              }
+
+              const isOwnMessage = msg.sender?._id === userData?._id;
+              const hasBeenSeen = msg.readBy && msg.readBy.length > 1;
+              const canDeleteForEveryone = isOwnMessage && !hasBeenSeen;
+
+              return (
                 <div
-                  className={`max-w-xs sm:max-w-sm md:max-w-md px-4 py-3 rounded-2xl ${
-                    msg.sender?._id === userData?._id
-                      ? 'bg-blue-500 text-white rounded-tr-none'
-                      : 'bg-white text-gray-800 border border-gray-200 rounded-tl-none'
-                  } ${msg.status === 'error' ? 'bg-red-100 border-red-200' : ''}`}
+                  key={msg._id || index}
+                  className={`flex group ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
                 >
-                  <p className="text-sm sm:text-base break-words">{msg.text}</p>
-                  
-                  <div className={`flex items-center justify-end mt-1 text-xs ${
-                    msg.sender?._id === userData?._id ? 'text-blue-100' : 'text-gray-500'
-                  }`}>
-                    <span className="mr-2">{formatTime(msg.createdAt)}</span>
+                  <div className="relative">
+                    <div
+                      className={`max-w-xs sm:max-w-sm md:max-w-md px-4 py-3 rounded-2xl ${
+                        isOwnMessage
+                          ? 'bg-blue-500 text-white rounded-tr-none'
+                          : 'bg-white text-gray-800 border border-gray-200 rounded-tl-none'
+                      } ${msg.status === 'error' ? 'bg-red-100 border-red-200' : ''}`}
+                    >
+                      {msg.deleted ? (
+                        <p className="text-sm italic opacity-70">{msg.text}</p>
+                      ) : (
+                        <p className="text-sm sm:text-base break-words">{msg.text}</p>
+                      )}
+                      
+                      <div className={`flex items-center justify-end mt-1 text-xs ${
+                        isOwnMessage ? 'text-blue-100' : 'text-gray-500'
+                      }`}>
+                        <span className="mr-2">{formatTime(msg.createdAt)}</span>
+                        
+                        {isOwnMessage && (
+                          <span className="flex items-center">
+                            {getMessageStatus(msg, otherUser?.onlineStatus === 'online')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                     
-                    {msg.sender?._id === userData?._id && (
-                      <span className="flex items-center">
-                        {getMessageStatus(msg)}
-                      </span>
+                    {/* Delete Options - Show on hover */}
+                    {!msg.deleted && (
+                      <div 
+                        className={`absolute top-0 ${isOwnMessage ? 'right-full mr-2' : 'left-full ml-2'} opacity-0 group-hover:opacity-100 transition-opacity`}
+                      >
+                        <div 
+                          className="relative"
+                          onMouseLeave={() => {
+                            // Auto-close menu when mouse leaves the entire container
+                            setMessages(prev => prev.map(m => 
+                              m._id === msg._id ? { ...m, showDeleteMenu: false } : m
+                            ));
+                          }}
+                        >
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMessages(prev => prev.map(m => 
+                                m._id === msg._id ? { ...m, showDeleteMenu: !m.showDeleteMenu } : { ...m, showDeleteMenu: false }
+                              ));
+                            }}
+                            className="p-1 bg-gray-200 hover:bg-gray-300 rounded-full"
+                          >
+                            <MoreVertical className="w-4 h-4 text-gray-600" />
+                          </button>
+                          
+                          {msg.showDeleteMenu && (
+                            <div 
+                              className={`absolute ${isOwnMessage ? 'right-0' : 'left-0'} top-0 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50`}
+                              onMouseEnter={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                onClick={() => handleDeleteMessage(msg._id, 'forMe')}
+                                className="w-full px-4 py-2 text-left text-sm text-gray-800 hover:bg-gray-100 flex items-center"
+                              >
+                                <X className="w-4 h-4 mr-2" />
+                                Delete for me
+                              </button>
+                              {canDeleteForEveryone && (
+                                <button
+                                  onClick={() => handleDeleteMessage(msg._id, 'forEveryone')}
+                                  className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center"
+                                >
+                                  <X className="w-4 h-4 mr-2" />
+                                  Delete for everyone
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             <div ref={messagesEndRef} />
           </div>
         )}

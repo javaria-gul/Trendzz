@@ -2,6 +2,7 @@ import express from "express";
 import { Chat, Message } from "../models/Chat.js";
 import User from "../models/User.js";
 import requireAuth from "../middleware/authMiddleware.js";
+import { createNotificationSafely } from '../utils/notificationHelper.js';
 
 const router = express.Router();
 
@@ -25,9 +26,20 @@ router.get("/chats", requireAuth, async (req, res) => {
 
     // Calculate unread counts for current user
     const chatsWithUnread = chats.map(chat => {
+      const chatObj = chat.toObject();
       const unreadCount = chat.unreadCounts?.get(req.user._id.toString()) || 0;
+      
+      // Convert Map to plain object for JSON serialization
+      const unreadCountsObj = {};
+      if (chat.unreadCounts) {
+        chat.unreadCounts.forEach((value, key) => {
+          unreadCountsObj[key] = value;
+        });
+      }
+      
       return {
-        ...chat.toObject(),
+        ...chatObj,
+        unreadCounts: unreadCountsObj, // Send as plain object
         unreadCount // For easier frontend access
       };
     });
@@ -142,10 +154,10 @@ router.get("/chats/:chatId/messages", requireAuth, async (req, res) => {
       });
     }
 
-    // Fetch messages with chat field
+    // Fetch messages with chat field - exclude messages deleted for this user
     let messages = await Message.find({ 
       chat: chatId,
-      deleted: false 
+      deletedFor: { $ne: req.user._id }  // Exclude messages deleted for this user
     })
     .populate("sender", "name username avatar")
     .populate({
@@ -265,6 +277,22 @@ router.post("/chats/:chatId/messages", requireAuth, async (req, res) => {
 
     console.log(`✅ Message sent: ${message._id}`);
 
+    // ✅ Notify other participants about the new message
+    try {
+      const otherParticipants = chat.participants.filter(pid => pid.toString() !== req.user._id.toString());
+      for (const recipientId of otherParticipants) {
+        await createNotificationSafely({
+          recipientId,
+          senderId: req.user._id,
+          type: 'message',
+          io: req.app?.io || null,
+          data: { text: (text || '').substring(0, 100) }
+        }).catch(err => console.error('Message notify error:', err.message));
+      }
+    } catch (notifyErr) {
+      console.error('❌ Message notification failed (non-critical):', notifyErr.message);
+    }
+
     res.json({ 
       success: true, 
       data: {
@@ -311,6 +339,24 @@ router.put("/chats/:chatId/read", requireAuth, async (req, res) => {
     );
 
     console.log(`✅ Marked ${result.modifiedCount} messages as read for chat: ${chatId}`);
+
+    // ✅ EMIT SOCKET EVENT to update badges in real-time
+    const io = req.app.get('io');
+    if (io) {
+      // Notify the user that their unread count is now 0 for this chat
+      io.to(req.user._id.toString()).emit('messages_read', {
+        chatId,
+        userId: req.user._id.toString()
+      });
+      
+      // Also emit chat_updated for compatibility
+      io.to(req.user._id.toString()).emit('chat_updated', {
+        chatId,
+        unreadCount: 0
+      });
+      
+      console.log(`📢 Emitted messages_read event to user ${req.user._id} for chat ${chatId}`);
+    }
 
     res.json({ 
       success: true, 
@@ -373,10 +419,11 @@ router.put("/messages/:messageId/read", requireAuth, async (req, res) => {
   }
 });
 
-// Delete message (soft delete)
+// Delete message with options (delete for me / delete for everyone)
 router.delete("/messages/:messageId", requireAuth, async (req, res) => {
   try {
     const { messageId } = req.params;
+    const { deleteType } = req.query; // 'forMe' or 'forEveryone'
 
     const message = await Message.findById(messageId);
     if (!message) {
@@ -386,25 +433,96 @@ router.delete("/messages/:messageId", requireAuth, async (req, res) => {
       });
     }
 
-    // Check if user is the sender
-    if (message.sender.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ 
-        success: false, 
-        message: "You can only delete your own messages" 
+    const io = req.app.get('io');
+
+    if (deleteType === 'forEveryone') {
+      // Only sender can delete for everyone
+      if (message.sender.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ 
+          success: false, 
+          message: "You can only delete your own messages for everyone" 
+        });
+      }
+
+      // Check if message has been seen by others
+      const hasBeenSeen = message.readBy.some(userId => 
+        userId.toString() !== req.user._id.toString()
+      );
+
+      if (hasBeenSeen) {
+        return res.status(403).json({ 
+          success: false, 
+          message: "Cannot delete message - already seen by others" 
+        });
+      }
+
+      // Soft delete for everyone
+      message.deleted = true;
+      message.text = "This message was deleted";
+      message.image = "";
+      message.file = "";
+      await message.save();
+
+      // Update chat's lastMessage if this was the last message
+      const chat = await Chat.findById(message.chat).populate('participants', 'name username avatar');
+      if (chat && chat.lastMessage && chat.lastMessage.toString() === message._id.toString()) {
+        // The deleted message was the last message, need to find the previous one or keep the deleted one
+        const previousMessage = await Message.findOne({
+          chat: message.chat,
+          _id: { $ne: message._id },
+          deleted: false
+        }).sort({ createdAt: -1 });
+
+        if (previousMessage) {
+          chat.lastMessage = previousMessage._id;
+        }
+        // If no previous message, keep the deleted message as lastMessage (it will show as deleted)
+        
+        await chat.save();
+      }
+
+      // Emit socket event to update message for all participants
+      if (io && chat) {
+        const populatedMessage = await Message.findById(message._id).populate('sender', 'name username avatar');
+        
+        // Emit to chat room for real-time update in ChatWindow
+        io.to(message.chat.toString()).emit('message_deleted', {
+          messageId: message._id,
+          chatId: message.chat,
+          deleteType: 'forEveryone'
+        });
+
+        // Emit to all participants individually for sidebar update
+        chat.participants.forEach(participant => {
+          io.to(participant._id.toString()).emit('message_deleted', {
+            messageId: message._id,
+            chatId: message.chat,
+            deleteType: 'forEveryone',
+            lastMessage: populatedMessage
+          });
+        });
+      }
+
+      res.json({ 
+        success: true, 
+        message: "Message deleted for everyone" 
+      });
+    } else {
+      // Delete for me - add user to deletedFor array
+      if (!message.deletedFor) {
+        message.deletedFor = [];
+      }
+      
+      if (!message.deletedFor.includes(req.user._id)) {
+        message.deletedFor.push(req.user._id);
+        await message.save();
+      }
+
+      res.json({ 
+        success: true, 
+        message: "Message deleted for you" 
       });
     }
-
-    // Soft delete
-    message.deleted = true;
-    message.text = "[This message was deleted]";
-    message.image = "";
-    message.file = "";
-    await message.save();
-
-    res.json({ 
-      success: true, 
-      message: "Message deleted" 
-    });
   } catch (error) {
     console.error("❌ Delete message error:", error);
     res.status(500).json({ 

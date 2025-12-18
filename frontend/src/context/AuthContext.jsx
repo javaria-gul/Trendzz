@@ -2,6 +2,7 @@
 
 import React, { createContext, useState, useEffect } from "react";
 import { updateProfile } from "../services/auth";
+import { followUser } from "../services/user";
 
 export const AuthContext = createContext();
 
@@ -18,14 +19,25 @@ export const AuthProvider = ({ children }) => {
   }, [userToken]);
 
   const login = (token, user = null) => {
-    localStorage.setItem("trendzz_token", token);
-    if (user) {
-      localStorage.setItem("trendzz_user", JSON.stringify(user));
-      setUserData(user);
-    }
-    setUserToken(token);
-    setIsAuthenticated(true);
-  };
+  localStorage.setItem("trendzz_token", token);
+  if (user) {
+    // Ensure privacySettings exists in user data
+    const userWithPrivacy = {
+      ...user,
+      privacySettings: user.privacySettings || {
+        showEmail: true,
+        showFollowers: true,
+        showFollowing: true,
+        allowMessages: true,
+        showOnlineStatus: true
+      }
+    };
+    localStorage.setItem("trendzz_user", JSON.stringify(userWithPrivacy));
+    setUserData(userWithPrivacy);
+  }
+  setUserToken(token);
+  setIsAuthenticated(true);
+};
 
   // ✅ IMPROVED LOGOUT FUNCTION
   const logout = (message = "Logged out successfully") => {
@@ -94,22 +106,34 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Enhanced updateUserData function for block/unblock
-  const updateUserData = (newData) => {
-    console.log('🔄 AuthContext: updateUserData called with:', newData);
+// Enhanced updateUserData function for block/unblock
+const updateUserData = (newData) => {
+  console.log('🔄 AuthContext: updateUserData called with:', newData);
+  
+  setUserData(prevData => {
+    // Deep merge to ensure nested objects update correctly
+    const updatedData = {
+      ...prevData,
+      ...newData,
+      // If privacySettings exists in newData, merge it properly
+      ...(newData.privacySettings && {
+        privacySettings: {
+          ...prevData.privacySettings,
+          ...newData.privacySettings
+        }
+      })
+    };
     
-    setUserData(prevData => {
-      const updatedData = { ...prevData, ...newData };
-      
-      // Ensure blockedUsers array exists and is properly formatted
-      if (updatedData.blockedUsers && !Array.isArray(updatedData.blockedUsers)) {
-        updatedData.blockedUsers = [];
-      }
-      
-      console.log('🔄 AuthContext: Updated user data:', updatedData);
-      localStorage.setItem("trendzz_user", JSON.stringify(updatedData));
-      return updatedData;
-    });
-  };
+    // Ensure blockedUsers array exists and is properly formatted
+    if (updatedData.blockedUsers && !Array.isArray(updatedData.blockedUsers)) {
+      updatedData.blockedUsers = [];
+    }
+    
+    console.log('🔄 AuthContext: Updated user data:', updatedData);
+    localStorage.setItem("trendzz_user", JSON.stringify(updatedData));
+    return updatedData;
+  });
+};
 
   // UPDATE completeOnboarding function
   const completeOnboarding = async (userData) => {
@@ -121,9 +145,12 @@ export const AuthProvider = ({ children }) => {
       
       console.log('✅ [AuthContext] Response from updateProfile:', response);
       
-      if (response && response.success !== undefined) {
-        if (response.success) {
-          const updatedUser = response.user || response;
+      // Extract data from response.data if it exists
+      const responseData = response.data || response;
+      
+      if (responseData && responseData.success !== undefined) {
+        if (responseData.success) {
+          const updatedUser = responseData.user || responseData;
           
           console.log('✅ [AuthContext] Onboarding successful, user:', updatedUser);
           
@@ -133,18 +160,18 @@ export const AuthProvider = ({ children }) => {
           
           return updatedUser;
         } else {
-          throw new Error(response.message || "Onboarding failed");
+          throw new Error(responseData.message || "Onboarding failed");
         }
       } else {
         // If success property is missing but we got a response
-        console.warn('⚠️ [AuthContext] Success property missing in response:', response);
+        console.warn('⚠️ [AuthContext] Success property missing in response:', responseData);
         
         // Assume success if we have user data
-        if (response && (response._id || response.username)) {
+        if (responseData && (responseData._id || responseData.username)) {
           console.log('⚠️ [AuthContext] Assuming success and updating user');
-          localStorage.setItem("trendzz_user", JSON.stringify(response));
-          setUserData(response);
-          return response;
+          localStorage.setItem("trendzz_user", JSON.stringify(responseData));
+          setUserData(responseData);
+          return responseData;
         } else {
           throw new Error("Invalid response from server");
         }
@@ -167,6 +194,47 @@ export const AuthProvider = ({ children }) => {
       throw errorObj;
     }
   };
+      
+  // In AuthContext.jsx, add this function:
+const handleFollowAction = async (userId, isFollowing) => {
+  try {
+    const response = await followUser(userId); // You'll need to import followUser
+    
+    // Extract data from response.data if it exists
+    const responseData = response.data || response;
+    
+    if (responseData.success) {
+      const currentFollowing = userData.following || [];
+      let updatedFollowing;
+      let followingCount = userData.followingCount || 0;
+      
+      if (isFollowing) {
+        // Unfollow - remove from array
+        updatedFollowing = currentFollowing.filter(following => {
+          const followingId = typeof following === 'object' ? following._id : following;
+          return followingId.toString() !== userId.toString();
+        });
+        followingCount = Math.max(0, followingCount - 1);
+      } else {
+        // Follow - add to array
+        updatedFollowing = [...currentFollowing, userId];
+        followingCount += 1;
+      }
+      
+      // Update user data
+      updateUserData({
+        ...userData,
+        following: updatedFollowing,
+        followingCount: followingCount
+      });
+      
+      return { success: true, isFollowing: !isFollowing };
+    }
+  } catch (error) {
+    console.error('Follow action error:', error);
+    return { success: false, error: error.message };
+  }
+};
 
   return (
     <AuthContext.Provider value={{
@@ -177,9 +245,12 @@ export const AuthProvider = ({ children }) => {
       logout,
       updateUserData,
       completeOnboarding,
-      handleAuthError // ✅ ADDED: For handling auth errors
+      handleAuthError, // ✅ ADDED: For handling auth errors
+      handleFollowAction
     }}>
       {children}
     </AuthContext.Provider>
   );
 };
+
+

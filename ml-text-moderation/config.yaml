@@ -1,0 +1,63 @@
+# ML Training Configuration
+
+# Model Settings
+model:
+  base_model: "distilbert-base-multilingual-cased"  # Smaller, faster multilingual model
+  max_length: 256
+  num_labels: 6  # toxic, severe_toxic, obscene, threat, insult, identity_hate
+  
+# Training Settings
+training:
+  batch_size: 16
+  learning_rate: 2e-5
+  num_epochs: 5
+  warmup_steps: 500
+  weight_decay: 0.01
+  gradient_accumulation_steps: 2
+  
+  # Early Stopping
+  early_stopping_patience: 3
+  early_stopping_threshold: 0.001
+  
+  # Validation
+  validation_split: 0.2
+  test_split: 0.1
+  
+# Data Augmentation
+augmentation:
+  enabled: true
+  techniques:
+    - synonym_replacement
+    - random_insertion
+    - random_swap
+    - back_translation
+  aug_probability: 0.3
+
+# Inference Settings
+inference:
+  threshold: 0.7
+  batch_inference: true
+  cache_enabled: true
+  max_cache_size: 1000
+
+# Multilingual Settings
+languages:
+  primary:
+    - en  # English
+    - ur  # Urdu
+    - hi  # Hindi
+    - ar  # Arabic
+  supported:
+    - es  # Spanish
+    - fr  # French
+    - de  # German
+    - pt  # Portuguese
+    - tr  # Turkish
+    - id  # Indonesian
+
+# Logging
+logging:
+  level: INFO
+  save_logs: true
+  log_dir: "logs/"
+  tensorboard_dir: "runs/"

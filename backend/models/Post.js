@@ -1,7 +1,7 @@
 // models/Post.js - CHANGE TO ES MODULE
 import mongoose from 'mongoose';
 
-const commentSchema = new mongoose.Schema({
+const replySchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -16,6 +16,39 @@ const commentSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  edited: {
+    type: Boolean,
+    default: false
+  },
+  editedAt: {
+    type: Date
+  }
+});
+
+const commentSchema = new mongoose.Schema({
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  text: {
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 1000
+  },
+  replies: [replySchema],
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  edited: {
+    type: Boolean,
+    default: false
+  },
+  editedAt: {
+    type: Date
   }
 });
 
@@ -24,6 +57,27 @@ const postSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
+  },
+  // If the post was created on someone else's profile (wall)
+  postedOn: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  // For shared posts
+  isShared: {
+    type: Boolean,
+    default: false
+  },
+  originalPost: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Post',
+    default: null
+  },
+  originalUser: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
   },
   content: {
     type: String,
@@ -56,9 +110,30 @@ const postSchema = new mongoose.Schema({
     trim: true,
     default: ''
   },
+  privacy: {
+    type: String,
+    enum: ['public', 'private', 'my-eyes-only'],
+    default: 'public'
+  },
   likes: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
+  }],
+  reactions: [{
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    type: {
+      type: String,
+      enum: ['like', 'love', 'haha', 'sad', 'angry', 'wow'],
+      required: true
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
   }],
   comments: [commentSchema],
   createdAt: {

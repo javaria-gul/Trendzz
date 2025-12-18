@@ -58,6 +58,11 @@ const messageSchema = new mongoose.Schema({
     type: Boolean, 
     default: false 
   },
+  deletedFor: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: []
+  }],
   // ✅ NEW: Message status tracking
   status: {
     type: String,
