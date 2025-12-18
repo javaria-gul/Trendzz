@@ -84,6 +84,11 @@ const ChatWindow = () => {
             const loadedMessages = messagesResponse.data.data || [];
             setMessages(loadedMessages);
           }
+          
+          // ✅ IMMEDIATELY mark messages as read when chat opens
+          markAsRead(chatId).then(() => {
+            console.log('✅ Messages marked as read on chat open:', chatId);
+          }).catch(err => console.error('Error marking as read on open:', err));
         }
         
       } catch (error) {
@@ -114,7 +119,13 @@ const ChatWindow = () => {
           return [...prev, data.message];
         });
         
-        // Don't auto-mark as read - let IntersectionObserver handle it when user sees the message
+        // ✅ Immediately mark as read since user is actively viewing this chat
+        // This ensures badge updates instantly when receiving messages
+        setTimeout(() => {
+          markAsRead(chatId).then(() => {
+            console.log('✅ New message marked as read:', chatId);
+          }).catch(err => console.error('Error marking new message as read:', err));
+        }, 300); // Small delay to ensure message is rendered
       }
     };
 

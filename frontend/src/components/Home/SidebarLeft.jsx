@@ -250,7 +250,12 @@ const SidebarLeft = () => {
   }, [searchQuery]);
 
   // Navigation function
-  const handleNavigation = (path, label, onClick) => {
+  const handleNavigation = (path, label, onClick, event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
     console.log('🔹 Navigation clicked:', { path, label });
     
     if (path === "#") {
@@ -281,7 +286,13 @@ const SidebarLeft = () => {
     navigate(path);
   };
 
-  const handleSearchItemClick = (userId) => {
+  const handleSearchItemClick = (userId, e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    console.log('🔍 Search result clicked, navigating to user:', userId);
     navigate(`/user/${userId}`);
     setActiveDropdown(null);
     setSearchQuery("");
@@ -295,7 +306,14 @@ const SidebarLeft = () => {
   };
 
   // Notification click handler
-  const handleNotificationClick = (notification) => {
+  const handleNotificationClick = (notification, e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    console.log('🔔 Notification clicked:', notification);
+    
     // Mark as read
     if (!notification.isRead) {
       setNotifications(prev =>
@@ -308,9 +326,11 @@ const SidebarLeft = () => {
     
     // Navigate based on type
     if (notification.post) {
+      console.log('🚀 Navigating to post:', notification.post._id);
       navigate(`/post/${notification.post._id}`);
     } else if (notification.sender) {
-      navigate(`/profile/${notification.sender._id}`);
+      console.log('🚀 Navigating to user profile:', notification.sender._id);
+      navigate(`/user/${notification.sender._id}`);
     }
     
     setActiveDropdown(null);
@@ -411,7 +431,7 @@ const SidebarLeft = () => {
             {searchResults.map((user) => (
               <button
                 key={user._id}
-                onClick={() => handleSearchItemClick(user._id)}
+                onClick={(e) => handleSearchItemClick(user._id, e)}
                 className="w-full text-left px-4 py-3 hover:bg-purple-50 flex items-center gap-3 transition-colors border-b border-gray-100 last:border-b-0"
               >
                 <div className="relative">
@@ -488,7 +508,7 @@ const SidebarLeft = () => {
               {notifications.map((notification) => (
                 <button
                   key={notification._id}
-                  onClick={() => handleNotificationClick(notification)}
+                  onClick={(e) => handleNotificationClick(notification, e)}
                   className={`w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-3 transition-colors border-b border-gray-100 last:border-b-0 ${
                     !notification.isRead ? 'bg-blue-50' : ''
                   }`}
@@ -566,7 +586,7 @@ const SidebarLeft = () => {
                     focus:outline-none focus:ring-2 focus:ring-yellow-300
                   `}
                   title={`${item.label}${badgeCount > 0 ? ` (${badgeCount})` : ''}`}
-                  onClick={() => handleNavigation(item.path, item.label, item.onClick)}
+                  onClick={(e) => handleNavigation(item.path, item.label, item.onClick, e)}
                 >
                   {item.icon}
                   

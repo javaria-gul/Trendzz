@@ -265,8 +265,15 @@ const PostCard = ({
   };
 
   // Navigate to user profile
-  const navigateToUserProfile = (userId) => {
-    if (userId) navigate(`/user/${userId}`);
+  const navigateToUserProfile = (userId, e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (userId) {
+      console.log('🔗 Navigating to user profile:', userId);
+      navigate(`/user/${userId}`);
+    }
   };
 
   // Handle share post
@@ -365,10 +372,7 @@ const PostCard = ({
             <span>shared a post of</span>
             <span 
               className="font-semibold text-blue-600 hover:underline cursor-pointer"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigateToUserProfile(originalUser?._id || originalUser);
-              }}
+              onClick={(e) => navigateToUserProfile(originalUser?._id || originalUser, e)}
             >
               @{originalUser?.username || originalUser?.name || 'User'}
             </span>
@@ -383,7 +387,7 @@ const PostCard = ({
             src={postUser.profilePicture || postUser.avatar || '/default-avatar.png'} 
             alt={postUser.username || 'User'}
             className="w-12 h-12 rounded-full border-2 border-blue-400 object-cover cursor-pointer hover:scale-105 transition-transform shadow-md"
-            onClick={() => navigateToUserProfile(postUser._id)}
+            onClick={(e) => navigateToUserProfile(postUser._id, e)}
             onError={(e) => {
               e.target.src = '/default-avatar.png';
               e.target.onerror = null;
@@ -391,7 +395,7 @@ const PostCard = ({
           />
           <div 
             className="cursor-pointer" 
-            onClick={() => navigateToUserProfile(postUser._id)}
+            onClick={(e) => navigateToUserProfile(postUser._id, e)}
           >
             <h4 className="font-bold text-gray-900 hover:text-blue-600 transition-colors">
               {postUser.name || postUser.username || 'User'}
@@ -588,7 +592,7 @@ const PostCard = ({
                         src={commentUser.profilePicture || commentUser.avatar || '/default-avatar.png'} 
                         alt={commentUser.username || 'User'}
                         className="w-9 h-9 rounded-full border-2 border-gray-300 object-cover cursor-pointer hover:scale-105 transition-transform"
-                        onClick={() => navigateToUserProfile(commentUser._id)}
+                        onClick={(e) => navigateToUserProfile(commentUser._id, e)}
                         onError={(e) => {
                           e.target.src = '/default-avatar.png';
                           e.target.onerror = null;
@@ -599,7 +603,7 @@ const PostCard = ({
                         <div className="bg-gray-100 rounded-2xl px-4 py-2.5">
                           <span 
                             className="font-bold text-gray-900 hover:text-blue-600 cursor-pointer transition-colors text-sm"
-                            onClick={() => navigateToUserProfile(commentUser._id)}
+                            onClick={(e) => navigateToUserProfile(commentUser._id, e)}
                           >
                             {commentUser.name || commentUser.username || 'User'}
                           </span>

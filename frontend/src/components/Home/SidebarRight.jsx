@@ -41,8 +41,13 @@ const SidebarRight = () => {
     }
   };
   // Navigate to user profile
-  const handleProfileClick = (userId) => {
-    navigate(`/profile/${userId}`);
+  const handleProfileClick = (userId, e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    console.log('🔗 Navigating to user profile from sidebar:', userId);
+    navigate(`/user/${userId}`);
   };
   // Fetch ML recommendations
   useEffect(() => {
@@ -193,7 +198,7 @@ const SidebarRight = () => {
                           {/* Avatar */}
                           <div 
                             className="cursor-pointer flex-shrink-0"
-                            onClick={() => handleProfileClick(user._id)}
+                            onClick={(e) => handleProfileClick(user._id, e)}
                           >
                             <div className="relative">
                               <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white text-sm font-bold overflow-hidden">
@@ -216,7 +221,7 @@ const SidebarRight = () => {
                           {/* User Info - FIXED: Truncate long text */}
                           <div 
                             className="flex-1 min-w-0 cursor-pointer"
-                            onClick={() => handleProfileClick(user._id)}
+                            onClick={(e) => handleProfileClick(user._id, e)}
                           >
                             <div className="flex items-start justify-between">
                               <div className="min-w-0">

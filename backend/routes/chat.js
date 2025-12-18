@@ -344,11 +344,18 @@ router.put("/chats/:chatId/read", requireAuth, async (req, res) => {
     const io = req.app.get('io');
     if (io) {
       // Notify the user that their unread count is now 0 for this chat
+      io.to(req.user._id.toString()).emit('messages_read', {
+        chatId,
+        userId: req.user._id.toString()
+      });
+      
+      // Also emit chat_updated for compatibility
       io.to(req.user._id.toString()).emit('chat_updated', {
         chatId,
         unreadCount: 0
       });
-      console.log(`📢 Emitted chat_updated to user ${req.user._id} - unreadCount: 0`);
+      
+      console.log(`📢 Emitted messages_read event to user ${req.user._id} for chat ${chatId}`);
     }
 
     res.json({ 

@@ -166,6 +166,43 @@ const ChatSidebar = () => {
         });
       };
 
+      // Handle messages marked as read
+      const handleMessagesRead = (data) => {
+        console.log('👁️ Messages marked as read:', data);
+        
+        if (data.chatId && userData?._id) {
+          setChats(prevChats => {
+            const updatedChats = JSON.parse(JSON.stringify(prevChats));
+            const chatIndex = updatedChats.findIndex(chat => chat._id === data.chatId);
+            
+            if (chatIndex >= 0) {
+              const chatToUpdate = updatedChats[chatIndex];
+              
+              // Reset unread count to 0 for current user
+              if (!chatToUpdate.unreadCounts) {
+                chatToUpdate.unreadCounts = {};
+              }
+              
+              // Convert Map to plain object if needed
+              if (chatToUpdate.unreadCounts instanceof Map || chatToUpdate.unreadCounts.get) {
+                const plainObject = {};
+                chatToUpdate.unreadCounts.forEach((value, key) => {
+                  plainObject[key] = value;
+                });
+                chatToUpdate.unreadCounts = plainObject;
+              }
+              
+              // Clear unread for this user
+              chatToUpdate.unreadCounts[userData._id.toString()] = 0;
+              
+              console.log('✅ Unread count cleared for chat:', data.chatId);
+            }
+            
+            return updatedChats;
+          });
+        }
+      };
+
       const handleMessageDeleted = (data) => {
         console.log('🗑️ Message deleted in sidebar:', data);
         
@@ -214,10 +251,12 @@ const ChatSidebar = () => {
 
       socket.on("chat_updated", handleChatUpdated);
       socket.on("message_deleted", handleMessageDeleted);
+      socket.on("messages_read", handleMessagesRead);
 
       return () => {
         socket.off("chat_updated", handleChatUpdated);
         socket.off("message_deleted", handleMessageDeleted);
+        socket.off("messages_read", handleMessagesRead);
       };
     }
   }, [socket, userData]);
@@ -424,7 +463,11 @@ const ChatSidebar = () => {
                 <div
                   key={chat._id}
                   className="p-4 hover:bg-gray-50 cursor-pointer transition-colors relative"
-                  onClick={() => navigate(`/chat/${chat._id}`)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    console.log('🖱️ Chat clicked:', chat._id);
+                    navigate(`/chat/${chat._id}`);
+                  }}
                 >
                   <div className="flex items-center gap-3">
                     {/* Avatar with Unread Badge */}
