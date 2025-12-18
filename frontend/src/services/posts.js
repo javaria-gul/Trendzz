@@ -45,7 +45,11 @@ export const postsAPI = {
     API.delete(`/posts/${postId}/comment/${commentId}`),
   
   replyToComment: (postId, commentId, text) => 
-    API.post(`/posts/${postId}/comment/${commentId}/reply`, { text })
+    API.post(`/posts/${postId}/comment/${commentId}/reply`, { text }),
+  
+  // Share post
+  sharePost: (postId) => 
+    API.post(`/posts/${postId}/share`)
 };
 
 // ✅ Export individual functions for backward compatibility

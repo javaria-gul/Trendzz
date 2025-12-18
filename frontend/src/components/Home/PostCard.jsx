@@ -28,6 +28,7 @@ const PostCard = ({
   const [replyingToCommentId, setReplyingToCommentId] = useState(null);
   const [replyText, setReplyText] = useState('');
   const [expandedReplies, setExpandedReplies] = useState({});
+  const [showShareModal, setShowShareModal] = useState(false);
   const commentInputRef = useRef(null);
   const reactionPickerRef = useRef(null);
 
@@ -41,6 +42,9 @@ const PostCard = ({
   const postReactions = post?.reactions || [];
   const postComments = post?.comments || [];
   const postPrivacy = post?.privacy || 'public';
+  const isSharedPost = post?.isShared || false;
+  const originalUser = post?.originalUser || null;
+  const originalPost = post?.originalPost || null;
 
   // Available reactions
   const reactions = [
@@ -265,6 +269,28 @@ const PostCard = ({
     if (userId) navigate(`/user/${userId}`);
   };
 
+  // Handle share post
+  const handleSharePost = async () => {
+    setShowShareModal(false);
+    try {
+      const { postsAPI } = await import('../../services/posts');
+      const response = await postsAPI.sharePost(post._id);
+      if (response.data?.success) {
+        alert('Post shared to your profile! 🎉');
+        window.location.reload();
+      } else {
+        alert(response.data?.message || 'Failed to share post');
+      }
+    } catch (error) {
+      if (error.response?.data?.message) {
+        alert(error.response.data.message);
+      } else {
+        alert('Failed to share post');
+        console.error('Share error:', error);
+      }
+    }
+  };
+
   // Parse content with mentions
   const parseContentWithMentions = (content) => {
     if (!content) return null;
@@ -329,6 +355,26 @@ const PostCard = ({
 
   return (
     <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden mb-6 w-full hover:shadow-xl transition-shadow">
+      {/* Shared Post Indicator */}
+      {isSharedPost && originalUser && (
+        <div className="px-4 pt-3 pb-1 bg-gray-50 border-b border-gray-100">
+          <div className="flex items-center space-x-2 text-sm text-gray-600">
+            <span className="text-lg">↗️</span>
+            <span className="font-semibold text-gray-900">{postUser?.name || postUser?.username}</span>
+            <span>shared a post of</span>
+            <span 
+              className="font-semibold text-blue-600 hover:underline cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigateToUserProfile(originalUser?._id || originalUser);
+              }}
+            >
+              @{originalUser?.username || originalUser?.name || 'User'}
+            </span>
+          </div>
+        </div>
+      )}
+      
       {/* Header */}
       <div className="flex justify-between items-start p-4 border-b border-gray-100">
         <div className="flex items-center space-x-3">
@@ -505,24 +551,16 @@ const PostCard = ({
             <span>Comment</span>
           </button>
 
-          <button 
-            className="flex items-center space-x-2 px-6 py-2.5 rounded-lg text-gray-700 hover:bg-gray-200 transition-all font-medium"
-            onClick={() => {
-              if (navigator.share) {
-                navigator.share({
-                  title: `Post by ${postUser.name || postUser.username}`,
-                  text: postContent,
-                  url: window.location.href
-                }).catch(err => console.log('Share cancelled'));
-              } else {
-                navigator.clipboard.writeText(window.location.href);
-                alert('Link copied to clipboard!');
-              }
-            }}
-          >
-            <span className="text-xl">↗️</span>
-            <span>Share</span>
-          </button>
+          {/* Only show share button if not user's own post */}
+          {currentUserId && postUser?._id?.toString() !== currentUserId?.toString() && (
+            <button 
+              className="flex items-center space-x-2 px-6 py-2.5 rounded-lg text-gray-700 hover:bg-gray-200 transition-all font-medium"
+              onClick={() => setShowShareModal(true)}
+            >
+              <span className="text-xl">↗️</span>
+              <span>Share</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -753,6 +791,66 @@ const PostCard = ({
           </button>
         </form>
       </div>
+
+      {/* Share Modal */}
+      {showShareModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowShareModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-gray-900">Share Post</h3>
+                <button 
+                  onClick={() => setShowShareModal(false)}
+                  className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                >
+                  ×
+                </button>
+              </div>
+              
+              <div className="mb-6">
+                <p className="text-gray-600 mb-4">
+                  Share this post by <span className="font-semibold text-gray-900">@{postUser?.username || 'user'}</span> to your profile?
+                </p>
+                
+                {/* Preview of post */}
+                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <img 
+                      src={postUser?.profilePicture || postUser?.avatar || '/default-avatar.png'}
+                      alt="User"
+                      className="w-8 h-8 rounded-full object-cover"
+                    />
+                    <span className="font-semibold text-sm text-gray-900">@{postUser?.username}</span>
+                  </div>
+                  <p className="text-sm text-gray-700 line-clamp-3">
+                    {postContent || 'Post content'}
+                  </p>
+                  {postMedia.length > 0 && (
+                    <div className="mt-2 text-xs text-gray-500">
+                      📷 {postMedia.length} {postMedia.length === 1 ? 'photo' : 'photos'}
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSharePost}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                >
+                  Share Now
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

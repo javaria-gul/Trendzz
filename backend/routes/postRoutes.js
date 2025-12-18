@@ -13,7 +13,8 @@ import {
   addReaction,
   editComment,
   deleteComment,
-  replyToComment
+  replyToComment,
+  sharePost
 } from "../controllers/postController.js";
 import upload from "../middleware/uploadMiddleware.js";
 import auth from "../middleware/authMiddleware.js";
@@ -53,6 +54,9 @@ router.post("/:postId/reaction", auth, addReaction);
 router.put("/:postId/comment/:commentId", auth, editComment);
 router.delete("/:postId/comment/:commentId", auth, deleteComment);
 router.post("/:postId/comment/:commentId/reply", auth, replyToComment);
+
+// Share post route
+router.post("/:postId/share", auth, sharePost);
 
 // ✅ Simple test route
 router.get("/test", (req, res) => {

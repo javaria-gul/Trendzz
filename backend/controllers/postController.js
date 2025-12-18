@@ -239,6 +239,16 @@ export const getFeed = async (req, res) => {
         model: User
       })
       .populate({
+        path: 'originalUser',
+        select: 'name username avatar profilePicture',
+        model: User
+      })
+      .populate({
+        path: 'originalPost',
+        select: 'content media hashtags location createdAt',
+        model: Post
+      })
+      .populate({
         path: 'comments.user',
         select: 'name username avatar',
         model: User
@@ -616,7 +626,9 @@ export const getUserPosts = async (req, res) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('user', 'username profilePicture')
+        .populate('user', 'username profilePicture avatar')
+        .populate('originalUser', 'username profilePicture avatar name')
+        .populate('originalPost', 'content media hashtags location createdAt')
         .populate('comments.user', 'username profilePicture')
         .lean();
 
@@ -985,6 +997,88 @@ export const replyToComment = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to add reply',
+      error: error.message
+    });
+  }
+};
+
+// ✅ NEW: SHARE POST
+export const sharePost = async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const userId = req.user._id;
+
+    console.log('📤 SHARE POST REQUEST:', { postId, userId });
+
+    // Find original post
+    const originalPost = await Post.findById(postId)
+      .populate('user', 'name username avatar profilePicture');
+
+    if (!originalPost) {
+      return res.status(404).json({
+        success: false,
+        message: 'Post not found'
+      });
+    }
+
+    // Check if user already shared this post
+    const alreadyShared = await Post.findOne({
+      user: userId,
+      originalPost: postId,
+      isShared: true
+    });
+
+    if (alreadyShared) {
+      return res.status(400).json({
+        success: false,
+        message: 'You have already shared this post'
+      });
+    }
+
+    // Create shared post
+    const sharedPost = new Post({
+      user: userId,
+      isShared: true,
+      originalPost: postId,
+      originalUser: originalPost.user._id,
+      content: originalPost.content,
+      media: originalPost.media,
+      hashtags: originalPost.hashtags,
+      location: originalPost.location,
+      privacy: 'public',
+      likes: [],
+      reactions: [],
+      comments: []
+    });
+
+    await sharedPost.save();
+
+    // Update user's posts count
+    await User.findByIdAndUpdate(userId, { $inc: { postsCount: 1 } });
+
+    // Populate the shared post
+    const populatedSharedPost = await Post.findById(sharedPost._id)
+      .populate('user', 'name username avatar profilePicture')
+      .populate('originalUser', 'name username avatar profilePicture')
+      .populate({
+        path: 'originalPost',
+        populate: {
+          path: 'user',
+          select: 'name username avatar profilePicture'
+        }
+      })
+      .lean();
+
+    res.json({
+      success: true,
+      message: 'Post shared successfully',
+      post: populatedSharedPost
+    });
+  } catch (error) {
+    console.error('❌ Share post error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to share post',
       error: error.message
     });
   }
