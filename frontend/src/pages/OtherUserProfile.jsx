@@ -346,7 +346,7 @@ const handleFollow = async (e) => {
     setShowBlockConfirm(false);
   };
 
-  // Admire functionality
+  // Admire functionality - UPDATED (realtime state update)
   const handleAdmire = async (e) => {
     if (e) {
       e.preventDefault();
@@ -364,12 +364,15 @@ const handleFollow = async (e) => {
       const data = response.data || response;
 
       if (data.success) {
-        // ✅ FIXED: Backend returns isAdmired, not hasAdmired
+        // ✅ FIXED: IMMEDIATELY update state for realtime effect
         setHasAdmired(data.isAdmired);
 
+        // ✅ FIXED: Update admirers count in realtime
         setUserProfile(prev => ({
           ...prev,
-          admirersCount: data.admirersCount || prev.admirersCount
+          admirersCount: data.isAdmired 
+            ? (prev.admirersCount || 0) + 1 
+            : Math.max(0, (prev.admirersCount || 1) - 1)
         }));
 
         console.log(data.isAdmired ? 'User admired successfully' : 'User unadmired successfully');
@@ -384,7 +387,6 @@ const handleFollow = async (e) => {
       setIsAdmireLoading(false);
     }
   };
-
 
   // Handle message 
   // Updated handleMessage function in OtherUserProfile.jsx
@@ -1243,18 +1245,18 @@ const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => 
             </div>
           </div>
 
-          {/* Action Buttons */}
+          {/* Action Buttons - UPDATED COLORS (previous file jaisa) */}
           <div className="absolute top-72 right-4 sm:top-80 sm:right-6">
             <div className="flex gap-2 items-center">
-              {/* Follow Button */}
+              {/* Follow Button - UPDATED COLOR */}
               <button
                 onClick={handleFollow}
                 disabled={isFollowLoading}
                 className={`px-4 py-2 rounded-lg transition font-medium ${
                   isFollowing 
-                    ? 'bg-gray-500 text-white hover:bg-gray-600' 
+                    ? 'bg-red-700 text-white hover:bg-blue-900' 
                     : 'bg-red-700 text-white hover:bg-blue-900'
-                  } ${isFollowLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                } ${isFollowLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {isFollowLoading ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -1263,14 +1265,15 @@ const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => 
                 )}
               </button>
 
-              {/* Admire Button */}
+              {/* Admire Button - UPDATED COLOR AND REAL-TIME FIX */}
               <button
                 onClick={handleAdmire}
                 disabled={isAdmireLoading}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition font-medium ${hasAdmired
-                    ? 'bg-red-600 text-white hover:bg-red-700'
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition font-medium ${
+                  hasAdmired 
+                    ? 'bg-red-600 text-white hover:bg-red-700' 
                     : 'bg-red-700 text-white hover:bg-blue-900'
-                  } ${isAdmireLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                } ${isAdmireLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {isAdmireLoading ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -1280,7 +1283,7 @@ const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => 
                 {hasAdmired ? 'Admired' : 'Admire'}
               </button>
 
-              {/* Message Button */}
+              {/* Message Button - UPDATED COLOR */}
               {userProfile.privacySettings?.allowMessages && (
                 <button
                   onClick={handleMessage}
@@ -1291,9 +1294,7 @@ const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => 
                 </button>
               )}
 
-              {/* Posting on other users' profiles is disabled in search/other-user view */}
-
-              {/* Options Button */}
+              {/* Options Button - UPDATED COLOR */}
               <button
                 onClick={toggleOptions}
                 className="flex items-center justify-center w-10 h-10 bg-red-700 text-white rounded-lg hover:bg-blue-900 transition font-medium"
@@ -1319,12 +1320,13 @@ const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => 
             </h2>
 
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
-              <div className="text-center p-3 sm:p-4 bg-red-50 rounded-lg sm:rounded-xl">
+              {/* Admirers - UPDATED HOVER EFFECT */}
+              <div className="text-center p-3 sm:p-4 bg-red-50 rounded-lg sm:rounded-xl hover:bg-red-100 transition-colors cursor-pointer">
                 <p className="text-xl sm:text-2xl font-bold text-red-600">{userProfile.admirersCount || 0}</p>
                 <p className="text-xs sm:text-sm text-gray-600">Admirers</p>
               </div>
               
-              {/* Clickable Following Box */}
+              {/* Clickable Following Box - UPDATED HOVER EFFECT */}
               <div 
                 className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl cursor-pointer hover:bg-blue-100 transition-colors"
                 onClick={toggleFollowingModal}
@@ -1333,7 +1335,7 @@ const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => 
                 <p className="text-xs sm:text-sm text-gray-600">Following</p>
               </div>
               
-              {/* Clickable Followers Box */}
+              {/* Clickable Followers Box - UPDATED HOVER EFFECT */}
               <div 
                 className="text-center p-3 sm:p-4 bg-green-50 rounded-lg sm:rounded-xl cursor-pointer hover:bg-green-100 transition-colors"
                 onClick={toggleFollowersModal}
@@ -1342,7 +1344,7 @@ const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => 
                 <p className="text-xs sm:text-sm text-gray-600">Followers</p>
               </div>
               
-              {/* Clickable Posts Box */}
+              {/* Clickable Posts Box - UPDATED HOVER EFFECT */}
               <div 
                 className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg sm:rounded-xl cursor-pointer hover:bg-purple-100 transition-colors"
                 onClick={handleViewPosts}
@@ -1536,7 +1538,7 @@ const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => 
                       console.error('Error loading more posts:', err);
                     }
                   }}
-                  className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full"
+                  className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full transition-colors"
                 >
                   Load more
                 </button>

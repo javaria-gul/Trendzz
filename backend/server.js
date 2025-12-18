@@ -14,11 +14,14 @@ import { fileURLToPath } from 'url';
 import notificationRoutes from './routes/notificationRoutes.js';
 import testRoutes from './routes/testRoutes.js';
 
+
 dotenv.config();
 connectDB();
 
 const app = express();
 const server = createServer(app);
+// Add this with other route imports by maria 
+import mlRoutes from './routes/mlRoutes.js';
 
 // ✅ __dirname fix for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -32,6 +35,9 @@ const io = setupSocket(server);
     req.io = io;
     next();
   });
+// Add this with other route uses by maria 
+app.use('/api/ml', mlRoutes);
+
 
 // CORS Configuration
 // CORS: allow localhost origins during development (supports different dev ports)

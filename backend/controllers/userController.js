@@ -337,7 +337,6 @@ export const unfollowUser = async (req, res) => {
   }
 };
 
-// In userController.js - UPDATE registerUser and loginUser
 export const registerUser = async (req, res) => {
   const { name, email, password } = req.body;
 
@@ -365,23 +364,38 @@ export const registerUser = async (req, res) => {
       name, 
       email, 
       password: hashedPassword,
-      blockedUsers: []
+      blockedUsers: [],
+      firstLogin: true  // ✅ Ensure firstLogin is set
     });
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "30d" });
+
+    // ✅ FIX: Complete user response
+    const userResponse = {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      username: user.username || '',
+      avatar: user.avatar || '',
+      bio: user.bio || '',
+      coverImage: user.coverImage || '',
+      role: user.role || '',
+      semester: user.semester || '',
+      batch: user.batch || '',
+      subjects: user.subjects || [],
+      followers: user.followers || [],
+      following: user.following || [],
+      admirersCount: user.admirersCount || 0,
+      firstLogin: user.firstLogin,  // ✅ DIRECT VALUE
+      blockedUsers: user.blockedUsers || [],
+      createdAt: user.createdAt
+    };
 
     res.status(201).json({ 
       success: true,  // ✅ Add success flag
       message: "Registration successful",
       token,  // ✅ Keep token at root
-      user: {  // ✅ Wrap user data in user object
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        username: user.username || '',
-        profilePicture: user.profilePicture || '',
-        firstLogin: user.firstLogin !== false
-      }
+      user: userResponse  // ✅ Complete user data
     });
   } catch (error) {
     res.status(500).json({ 
@@ -400,19 +414,33 @@ export const loginUser = async (req, res) => {
     if (user && (await bcrypt.compare(password, user.password))) {
       const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "30d" });
       
+      // ✅ FIX: firstLogin ka proper value bhejo (user model se directly)
+      const userResponse = {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        username: user.username || '',
+        avatar: user.avatar || '',  // ✅ profilePicture ki jagah avatar
+        bio: user.bio || '',
+        coverImage: user.coverImage || '',
+        role: user.role || '',
+        semester: user.semester || '',
+        batch: user.batch || '',
+        subjects: user.subjects || [],
+        followers: user.followers || [],
+        following: user.following || [],
+        admirersCount: user.admirersCount || 0,
+        firstLogin: user.firstLogin,  // ✅ DIRECT VALUE (true/false)
+        blockedUsers: user.blockedUsers || [],
+        createdAt: user.createdAt,
+        lastSeen: user.lastSeen
+      };
+      
       res.json({ 
         success: true,  // ✅ Add success flag
         message: "Login successful",
         token,  // ✅ Keep token at root
-        user: {  // ✅ Wrap user data in user object
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          username: user.username || '',
-          profilePicture: user.profilePicture || '',
-          firstLogin: user.firstLogin !== false,
-          blockedUsers: user.blockedUsers || []
-        }
+        user: userResponse  // ✅ Complete user data
       });
     } else {
       res.status(400).json({ 
@@ -425,7 +453,8 @@ export const loginUser = async (req, res) => {
       success: false,
       message: "Server error" 
     });
-  }};
+  }
+};
 
 // Get other user's profile
 // Get other user's profile - UPDATED TO INCLUDE PRIVACY SETTINGS
