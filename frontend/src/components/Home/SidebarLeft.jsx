@@ -7,6 +7,7 @@ import { searchUsers } from "../../services/user";
 import { getChats } from "../../services/chat";
 import { getNotifications, getUnreadCount, markAllAsRead } from "../../services/notification";
 import { AuthContext } from "../../context/AuthContext";
+import { SocketContext } from "../../context/SocketContext";
 import CreatePostModal from './CreatePostModal';
 
 
@@ -22,8 +23,10 @@ const SidebarLeft = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
+  const [unreadChatsMap, setUnreadChatsMap] = useState(new Map()); // Track which chats have unread messages
   
   const { userData } = useContext(AuthContext);
+  const { socket } = useContext(SocketContext);
   const dropdownRef = useRef(null);
 
   // Fetch notifications from API
@@ -130,17 +133,29 @@ const SidebarLeft = () => {
       const response = await getChats();
       if (response.data?.success) {
         const chats = response.data.data || [];
+        const newUnreadMap = new Map();
         let totalUsersWithUnread = 0;
         
         chats.forEach(chat => {
+          let userUnread = 0;
+          
+          // Handle Map type
           if (chat.unreadCounts && typeof chat.unreadCounts.get === 'function') {
-            const userUnread = chat.unreadCounts.get(userData._id) || 0;
-            if (userUnread > 0) {
-              totalUsersWithUnread++;
-            }
+            userUnread = chat.unreadCounts.get(userData._id) || 0;
+          } 
+          // Handle plain object
+          else if (chat.unreadCounts && typeof chat.unreadCounts === 'object') {
+            userUnread = chat.unreadCounts[userData._id.toString()] || 0;
+          }
+          
+          if (userUnread > 0) {
+            totalUsersWithUnread++;
+            newUnreadMap.set(chat._id, userUnread);
           }
         });
         
+        setUnreadChatsMap(newUnreadMap);
+        console.log('📊 Chat unread count updated:', totalUsersWithUnread, 'Map:', newUnreadMap);
         setChatUnreadCount(totalUsersWithUnread);
       }
     } catch (error) {
@@ -156,6 +171,42 @@ const SidebarLeft = () => {
       return () => clearInterval(interval);
     }
   }, [userData]);
+
+  // Real-time socket listener for chat updates (immediate badge update)
+  useEffect(() => {
+    if (!socket || !userData?._id) return;
+
+    const handleChatUpdated = (data) => {
+      console.log('🔔 Chat updated in sidebar:', data);
+      
+      if (data.chatId && data.unreadCount !== undefined) {
+        setUnreadChatsMap(prevMap => {
+          const newMap = new Map(prevMap);
+          
+          if (data.unreadCount > 0) {
+            // Add or update this chat as having unread messages
+            newMap.set(data.chatId, data.unreadCount);
+          } else {
+            // Remove this chat from unread map (it was read)
+            newMap.delete(data.chatId);
+          }
+          
+          // Update badge count based on Map size (number of chats with unread messages)
+          const newBadgeCount = newMap.size;
+          console.log('⚡ INSTANT badge update:', newBadgeCount, 'chats with unread messages');
+          setChatUnreadCount(newBadgeCount);
+          
+          return newMap;
+        });
+      }
+    };
+
+    socket.on('chat_updated', handleChatUpdated);
+
+    return () => {
+      socket.off('chat_updated', handleChatUpdated);
+    };
+  }, [socket, userData]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -502,29 +553,36 @@ const SidebarLeft = () => {
               (item.label === "Notifications" && activeDropdown === 'notifications');
 
             return (
-              <li
-                key={index}
-                className={`
-                  group w-10 h-10 flex items-center justify-center rounded-xl 
-                  transition-all cursor-pointer relative
-                  ${isActive ? 'bg-yellow-400 text-gray-900' : 'text-white hover:bg-yellow-400 hover:text-gray-900'}
-                `}
-                title={`${item.label}${badgeCount > 0 ? ` (${badgeCount})` : ''}`}
-                onClick={() => handleNavigation(item.path, item.label, item.onClick)}
-              >
-                {item.icon}
-                
-                {badgeCount > 0 && (
-                  <span className={`
-                    absolute -top-1 -right-1 ${getBadgeColor(badgeCount)} 
-                    text-white text-xs font-bold rounded-full 
-                    min-w-[18px] h-[18px] flex items-center justify-center 
-                    px-1 border-2 border-blue-900 shadow-sm
-                    ${badgeCount > 9 ? 'text-[10px]' : 'text-xs'} animate-pulse
-                  `}>
-                    {badgeCount > 9 ? '9+' : badgeCount}
-                  </span>
-                )}
+              <li key={index} className="relative">
+                <button
+                  type="button"
+                  className={`
+                    group w-10 h-10 flex items-center justify-center rounded-xl 
+                    transition-all cursor-pointer relative
+                    ${isActive ? 'bg-yellow-400 text-gray-900' : 'text-white hover:bg-yellow-400 hover:text-gray-900'}
+                    focus:outline-none focus:ring-2 focus:ring-yellow-300
+                  `}
+                  title={`${item.label}${badgeCount > 0 ? ` (${badgeCount})` : ''}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleNavigation(item.path, item.label, item.onClick);
+                  }}
+                >
+                  {item.icon}
+                  
+                  {badgeCount > 0 && (
+                    <span className={`
+                      absolute -top-1 -right-1 ${getBadgeColor(badgeCount)} 
+                      text-white text-xs font-bold rounded-full 
+                      min-w-[18px] h-[18px] flex items-center justify-center 
+                      px-1 border-2 border-blue-900 shadow-sm
+                      ${badgeCount > 9 ? 'text-[10px]' : 'text-xs'} animate-pulse pointer-events-none
+                    `}>
+                      {badgeCount > 9 ? '9+' : badgeCount}
+                    </span>
+                  )}
+                </button>
               </li>
             );
           })}
@@ -537,8 +595,9 @@ const SidebarLeft = () => {
       {showCreatePostModal && (
         <CreatePostModal
           onClose={() => setShowCreatePostModal(false)}
-          onPostCreated={() => {
-            alert('Post created successfully!');
+          onPostCreated={(newPost) => {
+            console.log('Post created:', newPost);
+            setShowCreatePostModal(false);
           }}
         />
       )}

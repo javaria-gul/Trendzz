@@ -32,7 +32,20 @@ export const postsAPI = {
   // ✅ For backward compatibility with existing code
   getFeed: (params) => API.get("/posts", { params }),
   reactPost: (postId, type) => API.post(`/posts/${postId}/react`, { type }),
-  commentPost: (postId, text) => API.post(`/posts/${postId}/comment`, { text })
+  commentPost: (postId, text) => API.post(`/posts/${postId}/comment`, { text }),
+  
+  // ✅ New enhanced features
+  addReaction: (postId, reactionType) => 
+    API.post(`/posts/${postId}/reaction`, { reactionType }),
+  
+  editComment: (postId, commentId, text) => 
+    API.put(`/posts/${postId}/comment/${commentId}`, { text }),
+  
+  deleteComment: (postId, commentId) => 
+    API.delete(`/posts/${postId}/comment/${commentId}`),
+  
+  replyToComment: (postId, commentId, text) => 
+    API.post(`/posts/${postId}/comment/${commentId}/reply`, { text })
 };
 
 // ✅ Export individual functions for backward compatibility

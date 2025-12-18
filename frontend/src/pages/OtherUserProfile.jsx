@@ -1511,6 +1511,7 @@ const handleFollowInModal = async (followingUserId, isCurrentlyFollowing, e) => 
                     key={post._id}
                     post={post}
                     currentUserId={currentUser?._id}
+                    userData={currentUser}
                     onLikeToggle={() => {}}
                     onAddComment={() => {}}
                     formatDate={(d) => d}

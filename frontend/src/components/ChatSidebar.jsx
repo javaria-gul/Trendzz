@@ -66,14 +66,43 @@ const ChatSidebar = () => {
     return usersWithUnread;
   };
 
+  // Helper to get unread count for a chat
+  const getUnreadCount = (chat) => {
+    if (!chat || !userData?._id) return 0;
+    
+    // Check different formats of unreadCounts
+    if (chat.unreadCounts && chat.unreadCounts.get) {
+      return chat.unreadCounts.get(userData._id.toString()) || 0;
+    }
+    
+    if (chat.unreadCounts && typeof chat.unreadCounts === 'object') {
+      return chat.unreadCounts[userData._id.toString()] || 0;
+    }
+    
+    if (chat.unreadCount !== undefined) {
+      return chat.unreadCount || 0;
+    }
+    
+    return 0;
+  };
+
   // Fetch real chats
   const fetchChats = async () => {
     try {
       setLoading(true);
       const response = await getChats();
       if (response.data.success) {
-        setChats(response.data.data);
-        console.log('✅ Chats loaded:', response.data.data.length);
+        const chats = response.data.data;
+        setChats(chats);
+        console.log('✅ Chats loaded:', chats.length);
+        
+        // Debug: Log unread counts
+        chats.forEach(chat => {
+          const unreadCount = getUnreadCount(chat);
+          if (unreadCount > 0) {
+            console.log(`📊 Chat ${chat._id} has ${unreadCount} unread messages`, chat.unreadCounts);
+          }
+        });
       }
     } catch (error) {
       console.error("Error fetching chats:", error);
@@ -137,12 +166,58 @@ const ChatSidebar = () => {
         });
       };
 
+      const handleMessageDeleted = (data) => {
+        console.log('🗑️ Message deleted in sidebar:', data);
+        
+        if (data.deleteType === 'forEveryone' && data.chatId) {
+          // Update chat to reflect deleted message
+          setChats(prevChats => {
+            const chatIndex = prevChats.findIndex(chat => 
+              chat._id === data.chatId || chat._id.toString() === data.chatId.toString()
+            );
+            
+            if (chatIndex >= 0) {
+              // Deep copy the chats array
+              const updatedChats = [...prevChats];
+              const chatToUpdate = { ...updatedChats[chatIndex] };
+              
+              // If lastMessage is provided in socket data, use it (already has deleted text)
+              if (data.lastMessage) {
+                chatToUpdate.lastMessage = data.lastMessage;
+                console.log('✅ Updated last message with socket data:', data.lastMessage.text);
+              } 
+              // Otherwise check if current lastMessage matches deleted messageId
+              else if (chatToUpdate.lastMessage) {
+                const lastMsgId = typeof chatToUpdate.lastMessage === 'object' 
+                  ? chatToUpdate.lastMessage._id 
+                  : chatToUpdate.lastMessage;
+                  
+                if (lastMsgId === data.messageId || lastMsgId?.toString() === data.messageId?.toString()) {
+                  // Update the message object to show deleted state
+                  chatToUpdate.lastMessage = {
+                    ...chatToUpdate.lastMessage,
+                    deleted: true,
+                    text: 'This message was deleted'
+                  };
+                  console.log('✅ Marked last message as deleted manually');
+                }
+              }
+              
+              updatedChats[chatIndex] = chatToUpdate;
+              return updatedChats;
+            }
+            
+            return prevChats;
+          });
+        }
+      };
+
       socket.on("chat_updated", handleChatUpdated);
-      socket.on("new_message", fetchChats);
+      socket.on("message_deleted", handleMessageDeleted);
 
       return () => {
         socket.off("chat_updated", handleChatUpdated);
-        socket.off("new_message", fetchChats);
+        socket.off("message_deleted", handleMessageDeleted);
       };
     }
   }, [socket, userData]);
@@ -219,25 +294,6 @@ const ChatSidebar = () => {
     return participants.find(participant => participant._id !== userData?._id);
   };
 
-  const getUnreadCount = (chat) => {
-    if (!chat || !userData?._id) return 0;
-    
-    // Check different formats of unreadCounts
-    if (chat.unreadCounts && chat.unreadCounts.get) {
-      return chat.unreadCounts.get(userData._id.toString()) || 0;
-    }
-    
-    if (chat.unreadCounts && typeof chat.unreadCounts === 'object') {
-      return chat.unreadCounts[userData._id.toString()] || 0;
-    }
-    
-    if (chat.unreadCount !== undefined) {
-      return chat.unreadCount || 0;
-    }
-    
-    return 0;
-  };
-
   // Get last message preview
   const getLastMessagePreview = (chat) => {
     if (!chat.lastMessage) return "Start a conversation";
@@ -265,13 +321,8 @@ const ChatSidebar = () => {
       {/* Header */}
       <div className="p-4 border-b border-gray-200">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+          <h2 className="text-xl font-bold text-gray-800">
             Messages
-            {usersWithUnread > 0 && (
-              <span className="bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                {usersWithUnread > 9 ? '9+' : usersWithUnread}
-              </span>
-            )}
           </h2>
           {/* CHANGED: Plus button replaced with Left Arrow button */}
           <button 

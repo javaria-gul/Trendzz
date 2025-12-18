@@ -156,14 +156,14 @@ const HomeFeed = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4">
+    <div className="w-full max-w-full px-4 py-8">
       {/* Create Post Card */}
-      <div className="bg-white rounded-xl shadow-md border border-gray-200 p-4 mb-6">
-        <div className="flex items-center space-x-4">
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl shadow-lg border border-gray-200 p-6 mb-6 hover:shadow-xl transition-all">
+        <div className="flex items-center space-x-4 mb-4">
           <img 
-            src={userData?.profilePicture || '/default-avatar.png'} 
+            src={userData?.profilePicture || userData?.avatar || '/default-avatar.png'} 
             alt="Profile"
-            className="w-12 h-12 rounded-full border-2 border-gray-200 object-cover"
+            className="w-14 h-14 rounded-full border-3 border-white shadow-md object-cover ring-2 ring-blue-400"
             onError={(e) => {
               e.target.src = '/default-avatar.png';
               e.target.onerror = null;
@@ -171,18 +171,25 @@ const HomeFeed = () => {
           />
           <button 
             onClick={() => setShowCreateModal(true)}
-            className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full px-6 py-3 text-left transition-colors"
+            className="flex-1 bg-white hover:bg-gray-50 text-gray-700 rounded-full px-6 py-4 text-left transition-all shadow-md hover:shadow-lg font-medium"
           >
-            What's on your mind?
+            What's on your mind, {userData?.name || userData?.username}?
           </button>
         </div>
-        <div className="flex justify-center space-x-6 mt-4">
+        <div className="flex justify-around space-x-4 pt-4 border-t border-gray-200">
           <button 
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center space-x-2 text-gray-700 hover:text-blue-600 transition-colors"
+            className="flex items-center space-x-2 text-gray-700 hover:text-blue-600 transition-all px-4 py-2 rounded-lg hover:bg-white"
           >
-            <span className="text-xl">📷</span>
-            <span>Photo/Video</span>
+            <span className="text-2xl">📷</span>
+            <span className="font-medium">Photo/Video</span>
+          </button>
+          <button 
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center space-x-2 text-gray-700 hover:text-green-600 transition-all px-4 py-2 rounded-lg hover:bg-white"
+          >
+            <span className="text-2xl">😊</span>
+            <span className="font-medium">Feeling/Activity</span>
           </button>
         </div>
       </div>
@@ -212,8 +219,39 @@ const HomeFeed = () => {
               key={post._id}
               post={post}
               currentUserId={userData?._id}
+              userData={userData}
               onLikeToggle={handleLike}
               onAddComment={handleAddComment}
+              onAddReaction={async (postId, reactionType) => {
+                try {
+                  await postsAPI.addReaction(postId, reactionType);
+                } catch (error) {
+                  console.error('Reaction error:', error);
+                }
+              }}
+              onEditComment={async (postId, commentId, text) => {
+                try {
+                  await postsAPI.editComment(postId, commentId, text);
+                } catch (error) {
+                  console.error('Edit comment error:', error);
+                }
+              }}
+              onDeleteComment={async (postId, commentId) => {
+                try {
+                  await postsAPI.deleteComment(postId, commentId);
+                } catch (error) {
+                  console.error('Delete comment error:', error);
+                }
+              }}
+              onReplyToComment={async (postId, commentId, text) => {
+                try {
+                  const result = await postsAPI.replyToComment(postId, commentId, text);
+                  return result.data;
+                } catch (error) {
+                  console.error('Reply error:', error);
+                  throw error;
+                }
+              }}
               formatDate={formatDate}
             />
           ))}

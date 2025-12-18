@@ -9,12 +9,13 @@ const CreatePostModal = ({ onClose, onPostCreated, postedOn = null }) => {
   const [previews, setPreviews] = useState([]);
   const [location, setLocation] = useState('');
   const [hashtags, setHashtags] = useState('');
+  const [privacy, setPrivacy] = useState('public');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState('');
   const fileInputRef = useRef(null);
   const { userData } = useContext(AuthContext);
-  const navigate = useNavigate(); // ADD THIS
+  const navigate = useNavigate();
 
   const handleFileChange = (e) => {
     const selectedFiles = Array.from(e.target.files);
@@ -116,12 +117,15 @@ const testBackend = async () => {
     formData.append('content', content);
     if (location) formData.append('location', location);
     if (hashtags) formData.append('hashtags', hashtags);
+    formData.append('privacy', privacy);
     
-    // Add files - IMPORTANT: use 'files' (plural) as field name
-    files.forEach(file => {
-      console.log('➕ Adding file:', file.name, file.type, file.size);
-      formData.append('files', file); // 'files' not 'file'
-    });
+    // Add files only if they exist - IMPORTANT: use 'files' (plural) as field name
+    if (files.length > 0) {
+      files.forEach(file => {
+        console.log('➕ Adding file:', file.name, file.type, file.size);
+        formData.append('files', file); // 'files' not 'file'
+      });
+    }
 
     // If this post is being created on another user's profile, include postedOn
     if (postedOn) {
@@ -213,27 +217,42 @@ try {
 
         {/* User Info */}
         <div className="p-4 border-b">
-          <div className="flex items-center space-x-3">
-           <img 
-               src={userData?.profilePicture || userData?.avatar || '/default-avatar.png'} 
-               alt="Profile"
-               className="w-10 h-10 rounded-full border-2 border-gray-200 object-cover"
-               onError={(e) => e.target.src = '/default-avatar.png'}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <img 
+                src={userData?.profilePicture || userData?.avatar || '/default-avatar.png'} 
+                alt="Profile"
+                className="w-12 h-12 rounded-full border-2 border-blue-400 object-cover shadow-md"
+                onError={(e) => e.target.src = '/default-avatar.png'}
               />
-            <div>
-              <h4 className="font-semibold text-gray-800">@{userData?.username || 'user'}</h4>
-              <select 
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                className="text-sm text-gray-600 bg-transparent border-none focus:outline-none"
-                disabled={isUploading}
-              >
-                <option value="">Add location</option>
-                <option value="Public">🌍 Public</option>
-                <option value="Friends">👥 Friends</option>
-                <option value="Private">🔒 Private</option>
-              </select>
+              <div>
+                <h4 className="font-bold text-gray-900">{userData?.name || userData?.username || 'user'}</h4>
+                <select 
+                  value={privacy}
+                  onChange={(e) => setPrivacy(e.target.value)}
+                  className="text-sm text-gray-700 bg-gray-100 border border-gray-300 rounded-full px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                  disabled={isUploading}
+                >
+                  <option value="public">🌍 Public</option>
+                  <option value="private">🔒 Private</option>
+                  <option value="my-eyes-only">👁️ My Eyes Only</option>
+                </select>
+              </div>
             </div>
+            
+            {location && (
+              <div className="text-sm text-gray-600 flex items-center">
+                <span className="mr-1">📍</span>
+                <input 
+                  type="text"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="Add location"
+                  className="border-none bg-transparent focus:outline-none text-gray-600"
+                  disabled={isUploading}
+                />
+              </div>
+            )}
           </div>
         </div>
 

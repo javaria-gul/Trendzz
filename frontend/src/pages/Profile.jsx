@@ -786,9 +786,20 @@ const followingCount = userData?.followingCount || userData?.following?.length |
                 <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 mb-2">
                   <div className="flex-1 min-w-0">
                     <div className="space-y-0">
-                      <h1 className="text-xl sm:text-2xl font-bold text-gray-800 truncate">
-                        {userData.name || 'Your Name'}
-                      </h1>
+                      <div className="flex items-center gap-2">
+                        <h1 className="text-xl sm:text-2xl font-bold text-gray-800 truncate">
+                          {userData.name || 'Your Name'}
+                        </h1>
+                        {userData.role && (
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                            userData.role === 'admin' ? 'bg-red-100 text-red-600 border border-red-300' :
+                            userData.role === 'faculty' ? 'bg-green-100 text-green-600 border border-green-300' :
+                            'bg-blue-100 text-blue-600 border border-blue-300'
+                          }`}>
+                            {userData.role}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-gray-500 text-lg">
                         @{userData.username || 'username'}
                       </p>
@@ -1206,6 +1217,7 @@ const followingCount = userData?.followingCount || userData?.following?.length |
                     key={post._id}
                     post={post}
                     currentUserId={userData?._id}
+                    userData={userData}
                     onLikeToggle={() => {}}
                     onAddComment={() => {}}
                     formatDate={(d) => d}
