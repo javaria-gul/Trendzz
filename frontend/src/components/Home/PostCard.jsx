@@ -277,7 +277,8 @@ const PostCard = ({
       const response = await postsAPI.sharePost(post._id);
       if (response.data?.success) {
         alert('Post shared to your profile! 🎉');
-        window.location.reload();
+        // Navigate to profile to see the shared post
+        navigate('/profile');
       } else {
         alert(response.data?.message || 'Failed to share post');
       }

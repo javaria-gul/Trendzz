@@ -1,0 +1,4 @@
+text,toxic,severe_toxic,obscene,threat,insult,identity_hate,language
+"Example of a normal, friendly comment",0,0,0,0,0,0,en
+Example of a toxic comment (add actual examples here),1,0,1,0,1,0,en
+Example of a threatening message (add actual examples here),1,1,0,1,0,0,en

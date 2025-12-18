@@ -4,6 +4,7 @@ import User from "../models/User.js";
 import cloudinary from '../config/cloudinary.js'; // ✅ IMPORT CLOUDINARY
 import streamifier from "streamifier";
 import { createNotificationSafely, createBulkNotifications } from "../utils/notificationHelper.js"; // ✅ NOTIFICATION HELPERS
+import { checkContentAllowed } from "../utils/mlModeration.js"; // ✅ ML CONTENT MODERATION
 
 // ✅ Helper function with proper error handling
 const uploadToCloudinaryLocal = (fileBuffer, options = {}) => {
@@ -50,6 +51,26 @@ export const createPost = async (req, res) => {
         success: false,
         message: 'Please add some content or media'
       });
+    }
+
+    // ✅ ML-BASED CONTENT MODERATION
+    if (content && content.trim()) {
+      console.log("🤖 Running ML moderation check...");
+      const moderationCheck = await checkContentAllowed(content, 0.7);
+      
+      if (!moderationCheck.allowed) {
+        console.log("❌ Post blocked by ML moderation");
+        return res.status(400).json({
+          success: false,
+          message: moderationCheck.reason,
+          moderation: {
+            flagged: true,
+            categories: moderationCheck.details.categories,
+            confidence: moderationCheck.details.confidence
+          }
+        });
+      }
+      console.log("✅ Content passed ML moderation");
     }
 
     const maxImageSize = 20 * 1024 * 1024; // 20MB

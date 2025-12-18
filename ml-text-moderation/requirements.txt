@@ -1,0 +1,13 @@
+# Minimal requirements for faster installation
+torch
+transformers
+flask
+flask-cors
+pandas
+numpy
+scikit-learn
+langdetect
+tqdm
+pyyaml
+python-dotenv
+requests

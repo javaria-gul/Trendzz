@@ -1,4 +1,4 @@
-import React, { useState, useRef, useContext } from 'react';
+import React, { useState, useRef, useContext, useEffect } from 'react';
 import { postsAPI } from '../../services/api';
 import { AuthContext } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom'; // ADD THIS
@@ -13,6 +13,8 @@ const CreatePostModal = ({ onClose, onPostCreated, postedOn = null }) => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState('');
+  const [moderationWarning, setModerationWarning] = useState('');
+  const [isCheckingContent, setIsCheckingContent] = useState(false);
   const fileInputRef = useRef(null);
   const { userData } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -69,6 +71,42 @@ const CreatePostModal = ({ onClose, onPostCreated, postedOn = null }) => {
     setFiles(newFiles);
     setPreviews(newPreviews);
   };
+
+  // Real-time content moderation check
+  useEffect(() => {
+    const checkContent = async () => {
+      if (!content.trim() || content.length < 3) {
+        setModerationWarning('');
+        return;
+      }
+
+      setIsCheckingContent(true);
+      try {
+        const response = await fetch('http://localhost:5002/moderate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: content })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.is_toxic && data.confidence > 0.6) {
+            setModerationWarning('⚠️ Your post contains words that may violate our community guidelines');
+          } else {
+            setModerationWarning('');
+          }
+        }
+      } catch (error) {
+        console.log('Moderation check unavailable');
+        setModerationWarning('');
+      } finally {
+        setIsCheckingContent(false);
+      }
+    };
+
+    const timeoutId = setTimeout(checkContent, 500); // Debounce
+    return () => clearTimeout(timeoutId);
+  }, [content]);
 
   
 const testBackend = async () => {
@@ -276,6 +314,19 @@ try {
               rows="4"
               disabled={isUploading}
             />
+
+            {/* Moderation Warning */}
+            {moderationWarning && (
+              <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                <svg className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm text-red-800 font-medium">{moderationWarning}</p>
+                  <p className="text-xs text-red-600 mt-1">Please review and edit your content before posting</p>
+                </div>
+              </div>
+            )}
             
             {/* Hashtags Preview */}
             {hashtags && (
@@ -385,9 +436,9 @@ try {
                 </button>
                 <button
                   type="submit"
-                  disabled={isUploading || (files.length === 0 && !content.trim())}
+                  disabled={isUploading || (files.length === 0 && !content.trim()) || moderationWarning}
                   className={`px-6 py-2 rounded-full font-semibold transition-all ${
-                    isUploading || (files.length === 0 && !content.trim())
+                    isUploading || (files.length === 0 && !content.trim()) || moderationWarning
                       ? 'bg-blue-200 text-blue-400 cursor-not-allowed'
                       : 'bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700'
                   }`}

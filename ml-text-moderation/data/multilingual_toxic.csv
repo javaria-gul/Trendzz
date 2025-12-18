@@ -1,0 +1,17 @@
+text,language,toxic,severe_toxic,obscene,threat,insult,identity_hate
+This is a great community,en,0,0,0,0,0,0
+You are stupid,en,1,0,1,0,1,0
+Thanks for the help!,en,0,0,0,0,0,0
+I will kill you,en,1,1,0,1,0,0
+Bahut acha hai ye,ur,0,0,0,0,0,0
+tu bhenchod hai,ur,1,1,1,0,1,0
+Shukriya dost,ur,0,0,0,0,0,0
+tujhe maar dunga,ur,1,1,0,1,0,0
+یہ بہت اچھا ہے,ur,0,0,0,0,0,0
+تم بیوقوف ہو,ur,1,0,0,0,1,0
+شکریہ دوست,ur,0,0,0,0,0,0
+میں تمہیں مار دوں گا,ur,1,1,0,1,0,0
+هذا رائع,ar,0,0,0,0,0,0
+أنت غبي,ar,1,0,0,0,1,0
+شكرا لك,ar,0,0,0,0,0,0
+سأقتلك,ar,1,1,0,1,0,0

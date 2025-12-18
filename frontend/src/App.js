@@ -16,7 +16,7 @@ import ChatWindow from "./components/ChatWindow";
 import ChatEmptyState from "./components/ChatEmptyState";
 import NotificationPage from './pages/NotificationPage';
 
-// Wrapper component to force remount when userId changes
+// Wrapper only for OtherUserProfile to handle userId param changes
 const OtherUserProfileWrapper = () => {
   const { userId } = useParams();
   return <OtherUserProfile key={userId} />;

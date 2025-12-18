@@ -28,7 +28,7 @@ const HomeLayout = () => {
           ${isChatPage ? "mr-0" : "mr-0 lg:mr-64"}
         `}
       >
-        <Outlet key={location.pathname + location.search} />
+        <Outlet />
       </div>
 
       {/* RIGHT SIDEBAR */}
