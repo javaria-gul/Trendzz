@@ -422,7 +422,7 @@ const PostCard = ({
       {/* Content */}
       {postContent && (
         <div className="px-4 pt-4">
-          <div className="text-gray-800 text-base leading-relaxed">
+          <div className="text-black text-base leading-relaxed">
             {parseContentWithMentions(postContent)}
           </div>
           
@@ -466,6 +466,7 @@ const PostCard = ({
           {postMedia.length > 1 && (
             <>
               <button 
+                type="button"
                 className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-60 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-opacity-80 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-lg"
                 onClick={handlePrevMedia}
                 disabled={currentMediaIndex === 0}
@@ -473,6 +474,7 @@ const PostCard = ({
                 ‹
               </button>
               <button 
+                type="button"
                 className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-60 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-opacity-80 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-lg"
                 onClick={handleNextMedia}
                 disabled={currentMediaIndex === postMedia.length - 1}
@@ -487,6 +489,7 @@ const PostCard = ({
               <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-2">
                 {postMedia.map((_, index) => (
                   <button 
+                    type="button"
                     key={index}
                     className={`w-2.5 h-2.5 rounded-full transition-all ${index === currentMediaIndex ? 'bg-white scale-125 shadow-lg' : 'bg-white bg-opacity-50'}`}
                     onClick={() => setCurrentMediaIndex(index)}
@@ -519,6 +522,7 @@ const PostCard = ({
           {/* Reaction Button */}
           <div className="relative" ref={reactionPickerRef}>
             <button 
+              type="button"
               onClick={() => setShowReactionPicker(!showReactionPicker)}
               onMouseEnter={() => setShowReactionPicker(true)}
               className={`flex items-center space-x-2 px-6 py-2.5 rounded-lg transition-all font-medium ${userReaction ? 'text-blue-600 bg-blue-100' : 'text-gray-700 hover:bg-gray-200'}`}
@@ -536,6 +540,7 @@ const PostCard = ({
               <div className="absolute bottom-full mb-2 left-0 bg-white rounded-full shadow-2xl border-2 border-gray-200 p-3 flex space-x-2 z-10" style={{animation: 'slideUp 0.2s ease-out'}}>
                 {reactions.map((reaction) => (
                   <button
+                    type="button"
                     key={reaction.type}
                     onClick={() => handleReaction(reaction.type)}
                     className="hover:scale-125 transition-transform text-2xl hover:drop-shadow-lg"
@@ -549,6 +554,7 @@ const PostCard = ({
           </div>
           
           <button 
+            type="button"
             className="flex items-center space-x-2 px-6 py-2.5 rounded-lg text-gray-700 hover:bg-gray-200 transition-all font-medium"
             onClick={() => commentInputRef.current?.focus()}
           >
@@ -559,6 +565,7 @@ const PostCard = ({
           {/* Only show share button if not user's own post */}
           {currentUserId && postUser?._id?.toString() !== currentUserId?.toString() && (
             <button 
+              type="button"
               className="flex items-center space-x-2 px-6 py-2.5 rounded-lg text-gray-700 hover:bg-gray-200 transition-all font-medium"
               onClick={() => setShowShareModal(true)}
             >
@@ -619,12 +626,14 @@ const PostCard = ({
                               />
                               <div className="flex space-x-2 mt-2">
                                 <button 
+                                  type="button"
                                   onClick={() => handleEditComment(commentId)}
                                   className="text-xs bg-blue-500 text-white px-4 py-1.5 rounded-full hover:bg-blue-600 font-medium"
                                 >
                                   Save
                                 </button>
                                 <button 
+                                  type="button"
                                   onClick={() => {
                                     setEditingCommentId(null);
                                     setEditCommentText('');
@@ -636,7 +645,7 @@ const PostCard = ({
                               </div>
                             </div>
                           ) : (
-                            <div className="text-gray-800 mt-1 text-sm">{comment.text}</div>
+                            <div className="text-black mt-1 text-sm">{comment.text}</div>
                           )}
                         </div>
                         
@@ -644,6 +653,7 @@ const PostCard = ({
                           <span>{formatDate(comment.createdAt)}</span>
                           {comment.edited && <span className="italic text-gray-400">• Edited</span>}
                           <button 
+                            type="button"
                             onClick={() => setReplyingToCommentId(commentId)}
                             className="hover:text-blue-600 transition-colors"
                           >
@@ -652,6 +662,7 @@ const PostCard = ({
                           {isCommentOwner && !isEditing && (
                             <>
                               <button 
+                                type="button"
                                 onClick={() => {
                                   setEditingCommentId(commentId);
                                   setEditCommentText(comment.text);
@@ -661,6 +672,7 @@ const PostCard = ({
                                 Edit
                               </button>
                               <button 
+                                type="button"
                                 onClick={() => handleDeleteComment(commentId)}
                                 className="hover:text-red-600 transition-colors"
                               >
@@ -674,6 +686,7 @@ const PostCard = ({
                         {replies.length > 0 && (
                           <div className="mt-3">
                             <button
+                              type="button"
                               onClick={() => setExpandedReplies(prev => ({...prev, [commentId]: !prev[commentId]}))}
                               className="text-xs text-blue-600 font-bold hover:underline flex items-center space-x-1"
                             >
@@ -701,7 +714,7 @@ const PostCard = ({
                                           <span className="font-bold text-gray-900 text-xs">
                                             {replyUser.name || replyUser.username || 'User'}
                                           </span>
-                                          <div className="text-gray-800 text-sm mt-1">{reply.text}</div>
+                                          <div className="text-black text-sm mt-1">{reply.text}</div>
                                         </div>
                                         <div className="text-xs text-gray-500 mt-1 font-medium">
                                           {formatDate(reply.createdAt)}
@@ -729,6 +742,7 @@ const PostCard = ({
                                 autoFocus
                               />
                               <button 
+                                type="button"
                                 onClick={() => handleReplySubmit(commentId)}
                                 disabled={!replyText.trim()}
                                 className="bg-blue-500 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-blue-600 disabled:bg-blue-300 transition-all"
@@ -736,6 +750,7 @@ const PostCard = ({
                                 Reply
                               </button>
                               <button 
+                                type="button"
                                 onClick={() => {
                                   setReplyingToCommentId(null);
                                   setReplyText('');
@@ -756,6 +771,7 @@ const PostCard = ({
 
             {commentsCount > 2 && (
               <button 
+                type="button"
                 className="text-blue-600 text-sm font-bold mb-4 hover:underline"
                 onClick={() => setShowAllComments(!showAllComments)}
               >
@@ -805,6 +821,7 @@ const PostCard = ({
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xl font-bold text-gray-900">Share Post</h3>
                 <button 
+                  type="button"
                   onClick={() => setShowShareModal(false)}
                   className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
                 >
@@ -840,12 +857,14 @@ const PostCard = ({
               
               <div className="flex space-x-3">
                 <button
+                  type="button"
                   onClick={() => setShowShareModal(false)}
                   className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={handleSharePost}
                   className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
                 >

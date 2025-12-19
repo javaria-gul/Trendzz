@@ -16,19 +16,42 @@ export const moderateContent = async (text, threshold = DEFAULT_THRESHOLD) => {
     
     const response = await axios.post(
       `${ML_SERVICE_URL}/moderate`,
-      { text, threshold },
+      { text },
       { timeout: 5000 }
     );
     
-    const result = response.data;
+    const data = response.data;
+    
+    // New format: { is_toxic, confidence, toxicity_score, labels, model }
+    const isToxic = data.is_toxic && data.confidence >= threshold;
+    
+    // Find flagged categories
+    const flaggedCategories = [];
+    if (data.labels) {
+      Object.entries(data.labels).forEach(([key, value]) => {
+        if (value && key !== 'toxic') {
+          flaggedCategories.push(key);
+        }
+      });
+    }
+    
+    const result = {
+      flagged: isToxic,
+      reason: isToxic ? (flaggedCategories[0] || 'toxic') : null,
+      flagged_categories: flaggedCategories,
+      confidence: data.confidence || 0,
+      toxicity_score: data.toxicity_score || 0,
+      model: data.model || 'unknown',
+      scores: data.labels || {}
+    };
     
     if (result.flagged) {
-      console.log(`❌ Content FLAGGED by ML model`);
+      console.log(`❌ Content FLAGGED by ML model (${data.model})`);
       console.log(`   Reason: ${result.reason}`);
-      console.log(`   Categories: ${result.flagged_categories.join(', ')}`);
+      console.log(`   Categories: ${flaggedCategories.join(', ')}`);
       console.log(`   Confidence: ${(result.confidence * 100).toFixed(1)}%`);
     } else {
-      console.log('✅ Content approved by ML model');
+      console.log(`✅ Content approved by ML model (${data.model})`);
     }
     
     return result;

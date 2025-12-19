@@ -310,7 +310,7 @@ try {
               onChange={(e) => setContent(e.target.value)}
               onKeyUp={extractHashtags}
               placeholder="What's on your mind?"
-              className="w-full border-none focus:outline-none text-lg resize-none min-h-[120px] disabled:bg-gray-100"
+              className="w-full border-none focus:outline-none text-lg resize-none min-h-[120px] disabled:bg-gray-100 text-black"
               rows="4"
               disabled={isUploading}
             />
