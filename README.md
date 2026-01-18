@@ -84,28 +84,10 @@ python app.py
 
 This will start the Flask server at http://localhost:5001.
 
-### 🌐 Deployment
-
-Frontend: Deployed on Vercel
-
-Backend: Hosted on Render
- or Railway
-
-ML API: Hosted via PythonAnywhere
- (optional)
 
 
-### Future Enhancements
 
-🔒 Two-factor authentication
 
-💬 Real-time chat using Socket.io
-
-📊 AI Dashboard with trend analytics
-
-📸 Media uploads (images/videos)
-
-🌎 Multi-language support
 
 🖤 Support
 
