@@ -1,4 +1,4 @@
-# Trendzz Copilot Instructions
+# Trendzz  Instructions
 
 ## Overview
 **Trendzz** is a full-stack MERN social media platform with real-time chat and trend prediction features. The codebase uses **ES6 modules** throughout, **JWT authentication**, **Socket.io** for real-time communication, and **Cloudinary** for media uploads.
